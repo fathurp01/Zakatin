@@ -7,20 +7,44 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// PostgreSQL connection via DATABASE_URL or individual env vars.
-const pool = new Pool(
-  process.env.DATABASE_URL
+function buildPgConfig() {
+  const sslRequired =
+    process.env.PGSSLMODE === 'require' ||
+    (process.env.DATABASE_URL || '').includes('sslmode=require') ||
+    (process.env.PGHOST || '').includes('supabase.co');
+
+  const ssl = sslRequired
     ? {
-        connectionString: process.env.DATABASE_URL,
+        rejectUnauthorized: false,
       }
-    : {
-        host: process.env.PGHOST || 'localhost',
-        port: Number(process.env.PGPORT) || 5432,
-        user: process.env.PGUSER || 'postgres',
-        password: process.env.PGPASSWORD || 'postgres',
-        database: process.env.PGDATABASE || 'zakat_db',
-      }
-);
+    : false;
+
+  if (process.env.DATABASE_URL) {
+    const dbUrl = new URL(process.env.DATABASE_URL);
+    // Let pg use explicit ssl config below, not SSL options embedded in URL.
+    dbUrl.searchParams.delete('sslmode');
+    dbUrl.searchParams.delete('sslcert');
+    dbUrl.searchParams.delete('sslkey');
+    dbUrl.searchParams.delete('sslrootcert');
+
+    return {
+      connectionString: dbUrl.toString(),
+      ssl,
+    };
+  }
+
+  return {
+    host: process.env.PGHOST || 'localhost',
+    port: Number(process.env.PGPORT) || 5432,
+    user: process.env.PGUSER || 'postgres',
+    password: process.env.PGPASSWORD || 'postgres',
+    database: process.env.PGDATABASE || 'zakat_db',
+    ssl,
+  };
+}
+
+// PostgreSQL connection via DATABASE_URL or individual env vars.
+const pool = new Pool(buildPgConfig());
 
 app.use(express.json());
 app.use(express.static(__dirname));
