@@ -21,7 +21,6 @@ function buildPgConfig() {
 
   if (process.env.DATABASE_URL) {
     const dbUrl = new URL(process.env.DATABASE_URL);
-    // Let pg use explicit ssl config below, not SSL options embedded in URL.
     dbUrl.searchParams.delete('sslmode');
     dbUrl.searchParams.delete('sslcert');
     dbUrl.searchParams.delete('sslkey');
@@ -43,7 +42,6 @@ function buildPgConfig() {
   };
 }
 
-// PostgreSQL connection via DATABASE_URL or individual env vars.
 const pool = new Pool(buildPgConfig());
 
 app.use(express.json());
@@ -54,7 +52,7 @@ function hitungNominalZakat(jumlahJiwa, jenisBayar) {
     return jumlahJiwa * 2.5;
   }
   if (jenisBayar === 'Uang') {
-    return jumlahJiwa * 40000;
+    return jumlahJiwa * 42500;
   }
   throw new Error("jenis_bayar harus 'Uang' atau 'Beras'");
 }
