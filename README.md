@@ -16,6 +16,10 @@ Project ini sengaja dibuat sederhana untuk kebutuhan cepat:
 - `POST /api/transaksi`: simpan transaksi baru + hitung otomatis `nominal_zakat`
 - `DELETE /api/transaksi/:id`: hapus transaksi
 - `GET /api/rekap`: rekap total dan distribusi dana
+- Cetak kwitansi per transaksi dengan nomor otomatis `KH-YYYY-XXXX`
+- Export print rekap muzaqi (tanpa infaq, untuk laporan kelurahan)
+- Export print rekap distribusi zakat (uang & beras)
+- Halaman monitor warga (read-only) di `/monitor.html` untuk dibagikan (misal ke grup WA)
 
 ### Rule Perhitungan Zakat
 
@@ -76,6 +80,7 @@ npm start
 ```json
 {
   "nama_kk": "Bapak Ahmad",
+  "alamat_muzaqi": "Jl. Melati No. 10",
   "jumlah_jiwa": 4,
   "jenis_bayar": "Uang",
   "nominal_infaq": 50000

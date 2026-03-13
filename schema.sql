@@ -3,6 +3,7 @@
 CREATE TABLE IF NOT EXISTS transaksi_zis (
     id SERIAL PRIMARY KEY,
     nama_kk VARCHAR(150) NOT NULL,
+    alamat_muzaqi VARCHAR(255) NOT NULL,
     jumlah_jiwa INTEGER NOT NULL CHECK (jumlah_jiwa > 0),
     jenis_bayar VARCHAR(10) NOT NULL CHECK (jenis_bayar IN ('Uang', 'Beras')),
     nominal_zakat NUMERIC(14,2) NOT NULL CHECK (nominal_zakat >= 0),

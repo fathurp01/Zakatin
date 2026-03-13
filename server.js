@@ -44,6 +44,13 @@ function buildPgConfig() {
 
 const pool = new Pool(buildPgConfig());
 
+async function ensureSchemaCompatibility() {
+  await pool.query(`
+    ALTER TABLE transaksi_zis
+    ADD COLUMN IF NOT EXISTS alamat_muzaqi VARCHAR(255) NOT NULL DEFAULT '-'
+  `);
+}
+
 app.use(express.json());
 app.use(express.static(__dirname));
 
@@ -57,14 +64,46 @@ function hitungNominalZakat(jumlahJiwa, jenisBayar) {
   throw new Error("jenis_bayar harus 'Uang' atau 'Beras'");
 }
 
-app.get('/api/transaksi', async (_req, res) => {
+app.get('/api/transaksi', async (req, res) => {
   try {
+    const { start_date: startDate, end_date: endDate } = req.query;
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+
+    if (startDate && (!dateRegex.test(startDate) || Number.isNaN(Date.parse(startDate)))) {
+      return res.status(400).json({ message: 'start_date tidak valid. Gunakan format YYYY-MM-DD.' });
+    }
+
+    if (endDate && (!dateRegex.test(endDate) || Number.isNaN(Date.parse(endDate)))) {
+      return res.status(400).json({ message: 'end_date tidak valid. Gunakan format YYYY-MM-DD.' });
+    }
+
+    if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
+      return res.status(400).json({ message: 'start_date tidak boleh lebih besar dari end_date.' });
+    }
+
+    const whereClause = [];
+    const values = [];
+
+    if (startDate) {
+      values.push(startDate);
+      whereClause.push(`created_at >= $${values.length}::date`);
+    }
+
+    if (endDate) {
+      values.push(endDate);
+      whereClause.push(`created_at < ($${values.length}::date + interval '1 day')`);
+    }
+
+    const whereSql = whereClause.length > 0 ? `WHERE ${whereClause.join(' AND ')}` : '';
+
     const query = `
-      SELECT id, nama_kk, jumlah_jiwa, jenis_bayar, nominal_zakat, nominal_infaq, created_at
+      SELECT id, nama_kk, alamat_muzaqi, jumlah_jiwa, jenis_bayar, nominal_zakat, nominal_infaq, created_at
       FROM transaksi_zis
+      ${whereSql}
       ORDER BY created_at DESC, id DESC
     `;
-    const { rows } = await pool.query(query);
+
+    const { rows } = await pool.query(query, values);
     res.json(rows);
   } catch (error) {
     console.error('GET /api/transaksi error:', error);
@@ -74,10 +113,14 @@ app.get('/api/transaksi', async (_req, res) => {
 
 app.post('/api/transaksi', async (req, res) => {
   try {
-    const { nama_kk, jumlah_jiwa, jenis_bayar, nominal_infaq } = req.body;
+    const { nama_kk, alamat_muzaqi, jumlah_jiwa, jenis_bayar, nominal_infaq } = req.body;
 
     if (!nama_kk || typeof nama_kk !== 'string') {
       return res.status(400).json({ message: 'nama_kk wajib diisi.' });
+    }
+
+    if (!alamat_muzaqi || typeof alamat_muzaqi !== 'string' || !alamat_muzaqi.trim()) {
+      return res.status(400).json({ message: 'alamat_muzaqi wajib diisi.' });
     }
 
     const jumlahJiwaNum = Number(jumlah_jiwa);
@@ -97,12 +140,12 @@ app.post('/api/transaksi', async (req, res) => {
     const nominalZakat = hitungNominalZakat(jumlahJiwaNum, jenis_bayar);
 
     const insertQuery = `
-      INSERT INTO transaksi_zis (nama_kk, jumlah_jiwa, jenis_bayar, nominal_zakat, nominal_infaq)
-      VALUES ($1, $2, $3, $4, $5)
-      RETURNING id, nama_kk, jumlah_jiwa, jenis_bayar, nominal_zakat, nominal_infaq, created_at
+      INSERT INTO transaksi_zis (nama_kk, alamat_muzaqi, jumlah_jiwa, jenis_bayar, nominal_zakat, nominal_infaq)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING id, nama_kk, alamat_muzaqi, jumlah_jiwa, jenis_bayar, nominal_zakat, nominal_infaq, created_at
     `;
 
-    const values = [nama_kk.trim(), jumlahJiwaNum, jenis_bayar, nominalZakat, infaqNum];
+    const values = [nama_kk.trim(), alamat_muzaqi.trim(), jumlahJiwaNum, jenis_bayar, nominalZakat, infaqNum];
     const { rows } = await pool.query(insertQuery, values);
 
     res.status(201).json(rows[0]);
@@ -119,10 +162,14 @@ app.put('/api/transaksi/:id', async (req, res) => {
       return res.status(400).json({ message: 'id tidak valid.' });
     }
 
-    const { nama_kk, jumlah_jiwa, jenis_bayar, nominal_infaq } = req.body;
+    const { nama_kk, alamat_muzaqi, jumlah_jiwa, jenis_bayar, nominal_infaq } = req.body;
 
     if (!nama_kk || typeof nama_kk !== 'string') {
       return res.status(400).json({ message: 'nama_kk wajib diisi.' });
+    }
+
+    if (!alamat_muzaqi || typeof alamat_muzaqi !== 'string' || !alamat_muzaqi.trim()) {
+      return res.status(400).json({ message: 'alamat_muzaqi wajib diisi.' });
     }
 
     const jumlahJiwaNum = Number(jumlah_jiwa);
@@ -144,15 +191,16 @@ app.put('/api/transaksi/:id', async (req, res) => {
     const updateQuery = `
       UPDATE transaksi_zis
       SET nama_kk = $1,
-          jumlah_jiwa = $2,
-          jenis_bayar = $3,
-          nominal_zakat = $4,
-          nominal_infaq = $5
-      WHERE id = $6
-      RETURNING id, nama_kk, jumlah_jiwa, jenis_bayar, nominal_zakat, nominal_infaq, created_at
+          alamat_muzaqi = $2,
+          jumlah_jiwa = $3,
+          jenis_bayar = $4,
+          nominal_zakat = $5,
+          nominal_infaq = $6
+      WHERE id = $7
+      RETURNING id, nama_kk, alamat_muzaqi, jumlah_jiwa, jenis_bayar, nominal_zakat, nominal_infaq, created_at
     `;
 
-    const values = [nama_kk.trim(), jumlahJiwaNum, jenis_bayar, nominalZakat, infaqNum, id];
+    const values = [nama_kk.trim(), alamat_muzaqi.trim(), jumlahJiwaNum, jenis_bayar, nominalZakat, infaqNum, id];
     const { rows, rowCount } = await pool.query(updateQuery, values);
 
     if (rowCount === 0) {
@@ -186,8 +234,38 @@ app.delete('/api/transaksi/:id', async (req, res) => {
   }
 });
 
-app.get('/api/rekap', async (_req, res) => {
+app.get('/api/rekap', async (req, res) => {
   try {
+    const { start_date: startDate, end_date: endDate } = req.query;
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+
+    if (startDate && (!dateRegex.test(startDate) || Number.isNaN(Date.parse(startDate)))) {
+      return res.status(400).json({ message: 'start_date tidak valid. Gunakan format YYYY-MM-DD.' });
+    }
+
+    if (endDate && (!dateRegex.test(endDate) || Number.isNaN(Date.parse(endDate)))) {
+      return res.status(400).json({ message: 'end_date tidak valid. Gunakan format YYYY-MM-DD.' });
+    }
+
+    if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
+      return res.status(400).json({ message: 'start_date tidak boleh lebih besar dari end_date.' });
+    }
+
+    const whereClause = [];
+    const values = [];
+
+    if (startDate) {
+      values.push(startDate);
+      whereClause.push(`created_at >= $${values.length}::date`);
+    }
+
+    if (endDate) {
+      values.push(endDate);
+      whereClause.push(`created_at < ($${values.length}::date + interval '1 day')`);
+    }
+
+    const whereSql = whereClause.length > 0 ? `WHERE ${whereClause.join(' AND ')}` : '';
+
     const query = `
       SELECT
         COUNT(*)::int AS total_kk,
@@ -196,18 +274,27 @@ app.get('/api/rekap', async (_req, res) => {
         COALESCE(SUM(CASE WHEN jenis_bayar = 'Uang' THEN nominal_zakat ELSE 0 END), 0)::numeric AS total_uang_zakat,
         COALESCE(SUM(nominal_infaq), 0)::numeric AS total_infaq
       FROM transaksi_zis
+      ${whereSql}
     `;
 
-    const { rows } = await pool.query(query);
+    const { rows } = await pool.query(query, values);
     const data = rows[0];
 
     const totalDanaDistribusi = Number(data.total_uang_zakat) + Number(data.total_infaq);
+    const totalBerasDistribusi = Number(data.total_beras);
 
     const distribusi = {
       fakir_miskin: Number((totalDanaDistribusi * 0.625).toFixed(2)),
       amil: Number((totalDanaDistribusi * 0.08).toFixed(2)),
       fisabilillah: Number((totalDanaDistribusi * 0.11).toFixed(2)),
       lainnya: Number((totalDanaDistribusi * 0.185).toFixed(2)),
+    };
+
+    const distribusiBeras = {
+      fakir_miskin: Number((totalBerasDistribusi * 0.625).toFixed(2)),
+      amil: Number((totalBerasDistribusi * 0.08).toFixed(2)),
+      fisabilillah: Number((totalBerasDistribusi * 0.11).toFixed(2)),
+      lainnya: Number((totalBerasDistribusi * 0.185).toFixed(2)),
     };
 
     res.json({
@@ -217,7 +304,9 @@ app.get('/api/rekap', async (_req, res) => {
       total_uang_zakat: Number(data.total_uang_zakat),
       total_infaq: Number(data.total_infaq),
       total_dana_distribusi: Number(totalDanaDistribusi.toFixed(2)),
+      total_beras_distribusi: Number(totalBerasDistribusi.toFixed(2)),
       distribusi,
+      distribusi_beras: distribusiBeras,
     });
   } catch (error) {
     console.error('GET /api/rekap error:', error);
@@ -231,6 +320,7 @@ app.get('/', (_req, res) => {
 
 app.listen(PORT, async () => {
   try {
+    await ensureSchemaCompatibility();
     await pool.query('SELECT 1');
     console.log(`Server berjalan di http://localhost:${PORT}`);
     console.log('Koneksi PostgreSQL berhasil.');

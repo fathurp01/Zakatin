@@ -40,8 +40,10 @@
     <div class="container py-4 py-md-5">
       <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
         <h1 class="h3 m-0 fw-bold">Zakat & Infaq Masjid</h1>
-        <a href="https://github.com/fathurp01/Zakatin.git" class="badge text-bg-success px-3 py-2 text-decoration-none">Github</a>
-
+        <!-- <a href="https://github.com/fathurp01/Zakatin.git" class="badge text-bg-success px-3 py-2 text-decoration-none">Github</a> -->
+        <div class="d-flex gap-2 flex-wrap">
+          <a href="/monitor.html" target="_blank" class="badge text-bg-primary px-3 py-2 text-decoration-none">Link Monitor Warga</a>
+        </div>
       </div>
 
       <section class="mb-4">
@@ -96,6 +98,22 @@
                 </ul>
               </div>
             </div>
+            <hr class="my-3" />
+            <div class="row g-3 align-items-center">
+              <div class="col-12 col-lg-4">
+                <p class="mb-1 text-muted">Total Beras Distribusi (kg)</p>
+                <p id="totalDistribusiBeras" class="mb-0 fw-semibold">0 kg</p>
+              </div>
+              <div class="col-12 col-lg-8">
+                <p class="mb-1 text-muted">Breakdown Distribusi Beras</p>
+                <ul class="mb-0 small ps-3">
+                  <li>Fakir Miskin (62.5%): <strong id="distBerasFakir">0 kg</strong></li>
+                  <li>Amil (8%): <strong id="distBerasAmil">0 kg</strong></li>
+                  <li>Fisabilillah (11%): <strong id="distBerasFisabilillah">0 kg</strong></li>
+                  <li>Lainnya (18.5%): <strong id="distBerasLainnya">0 kg</strong></li>
+                </ul>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -108,6 +126,10 @@
               <div class="col-12 col-md-6">
                 <label for="nama_kk" class="form-label">Nama KK</label>
                 <input type="text" class="form-control" id="nama_kk" required />
+              </div>
+              <div class="col-12 col-md-6">
+                <label for="alamat_muzaqi" class="form-label">Alamat Muzaqi</label>
+                <input type="text" class="form-control" id="alamat_muzaqi" required />
               </div>
               <div class="col-12 col-md-3">
                 <label for="jumlah_jiwa" class="form-label">Jumlah Jiwa</label>
@@ -138,12 +160,29 @@
         <h2 class="h5 section-title mb-3">Riwayat Transaksi</h2>
         <div class="card card-soft">
           <div class="card-body">
+            <div class="row g-2 align-items-end mb-3">
+              <div class="col-12 col-md-3">
+                <label for="filterStartDate" class="form-label">Dari Tanggal</label>
+                <input type="date" class="form-control" id="filterStartDate" />
+              </div>
+              <div class="col-12 col-md-3">
+                <label for="filterEndDate" class="form-label">Sampai Tanggal</label>
+                <input type="date" class="form-control" id="filterEndDate" />
+              </div>
+              <div class="col-12 col-md-6 d-flex flex-wrap gap-2">
+                <button type="button" class="btn btn-outline-primary" id="btnApplyFilter">Terapkan Filter</button>
+                <button type="button" class="btn btn-outline-secondary" id="btnClearFilter">Reset Filter</button>
+                <button type="button" class="btn btn-outline-success" id="btnPrintMuzakiReport">Export Rekap Muzaqi</button>
+                <button type="button" class="btn btn-success" id="btnPrintDistribusiReport">Export Rekap Distribusi</button>
+              </div>
+            </div>
+
             <div class="table-responsive">
               <table class="table table-striped align-middle" id="tabelTransaksi">
                 <thead>
                   <tr>
-                    <th>ID</th>
                     <th>Nama KK</th>
+                    <th>Alamat Muzaqi</th>
                     <th>Jiwa</th>
                     <th>Jenis</th>
                     <th>Nominal Zakat</th>
@@ -164,8 +203,15 @@
       const form = document.getElementById('formTransaksi');
       const formMessage = document.getElementById('formMessage');
       const bodyTransaksi = document.getElementById('bodyTransaksi');
+      const filterStartDate = document.getElementById('filterStartDate');
+      const filterEndDate = document.getElementById('filterEndDate');
+      const btnApplyFilter = document.getElementById('btnApplyFilter');
+      const btnClearFilter = document.getElementById('btnClearFilter');
+      const btnPrintMuzakiReport = document.getElementById('btnPrintMuzakiReport');
+      const btnPrintDistribusiReport = document.getElementById('btnPrintDistribusiReport');
       let currentEditId = null;
       let transaksiCache = [];
+      let transaksiFilteredCache = [];
 
       function setFormMode(mode) {
         const submitBtn = form.querySelector('button[type="submit"]');
@@ -194,6 +240,7 @@
       function startEdit(item) {
         currentEditId = item.id;
         document.getElementById('nama_kk').value = item.nama_kk;
+        document.getElementById('alamat_muzaqi').value = item.alamat_muzaqi || '';
         document.getElementById('jumlah_jiwa').value = item.jumlah_jiwa;
         document.getElementById('jenis_bayar').value = item.jenis_bayar;
         document.getElementById('nominal_infaq').value = item.nominal_infaq;
@@ -215,10 +262,47 @@
         }).format(Number(angka || 0));
       }
 
+      function escapeHtml(value) {
+        return String(value ?? '')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      function getNoKwitansi(item) {
+        const year = new Date(item.created_at).getFullYear();
+        return `KH-${year}-${String(item.id).padStart(4, '0')}`;
+      }
+
+      function getActiveDateRangeLabel() {
+        const start = filterStartDate.value;
+        const end = filterEndDate.value;
+
+        if (!start && !end) {
+          return 'Semua Periode';
+        }
+
+        const startText = start ? new Date(`${start}T00:00:00`).toLocaleDateString('id-ID') : 'Awal';
+        const endText = end ? new Date(`${end}T00:00:00`).toLocaleDateString('id-ID') : 'Sekarang';
+        return `${startText} - ${endText}`;
+      }
+
       async function loadRekap() {
-        const response = await fetch('/api/rekap');
+        const params = new URLSearchParams();
+        if (filterStartDate.value) {
+          params.set('start_date', filterStartDate.value);
+        }
+        if (filterEndDate.value) {
+          params.set('end_date', filterEndDate.value);
+        }
+
+        const url = params.toString() ? `/api/rekap?${params.toString()}` : '/api/rekap';
+        const response = await fetch(url);
         if (!response.ok) {
-          throw new Error('Gagal mengambil rekap');
+          const errorRes = await response.json().catch(() => ({}));
+          throw new Error(errorRes.message || 'Gagal mengambil rekap');
         }
 
         const data = await response.json();
@@ -233,16 +317,203 @@
         document.getElementById('distAmil').textContent = formatRupiah(data.distribusi.amil);
         document.getElementById('distFisabilillah').textContent = formatRupiah(data.distribusi.fisabilillah);
         document.getElementById('distLainnya').textContent = formatRupiah(data.distribusi.lainnya);
+        document.getElementById('totalDistribusiBeras').textContent = `${formatAngka(data.total_beras_distribusi)} kg`;
+        document.getElementById('distBerasFakir').textContent = `${formatAngka(data.distribusi_beras.fakir_miskin)} kg`;
+        document.getElementById('distBerasAmil').textContent = `${formatAngka(data.distribusi_beras.amil)} kg`;
+        document.getElementById('distBerasFisabilillah').textContent = `${formatAngka(data.distribusi_beras.fisabilillah)} kg`;
+        document.getElementById('distBerasLainnya').textContent = `${formatAngka(data.distribusi_beras.lainnya)} kg`;
+      }
+
+      function printKwitansi(item) {
+        const tanggal = new Date(item.created_at).toLocaleString('id-ID');
+        const nomorKwitansi = getNoKwitansi(item);
+        const nominalZakatTampil =
+          item.jenis_bayar === 'Uang'
+            ? formatRupiah(item.nominal_zakat)
+            : `${formatAngka(item.nominal_zakat)} kg`;
+
+        const printWindow = window.open('', '_blank', 'width=700,height=850');
+        if (!printWindow) {
+          alert('Popup diblokir browser. Izinkan popup untuk mencetak kwitansi.');
+          return;
+        }
+
+        printWindow.document.write(`
+          <!doctype html>
+          <html lang="id">
+            <head>
+              <meta charset="UTF-8" />
+              <title>Kwitansi Zakat</title>
+              <style>
+                body {
+                  font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
+                  padding: 26px;
+                  color: #1f2937;
+                  background: #f8fafc;
+                }
+                .box {
+                  background: #ffffff;
+                  border: 2px solid #166534;
+                  border-radius: 12px;
+                  padding: 22px;
+                }
+                .header {
+                  display: flex;
+                  align-items: center;
+                  justify-content: space-between;
+                  border-bottom: 2px solid #dcfce7;
+                  padding-bottom: 12px;
+                  margin-bottom: 14px;
+                }
+                .logo {
+                  width: 56px;
+                  height: 56px;
+                  border-radius: 50%;
+                  background: #166534;
+                  color: #ffffff;
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                  font-weight: 700;
+                  font-size: 15px;
+                }
+                .title h1 {
+                  margin: 0;
+                  font-size: 22px;
+                  color: #14532d;
+                }
+                .title p {
+                  margin: 2px 0 0;
+                  color: #4b5563;
+                  font-size: 13px;
+                }
+                .meta {
+                  margin-top: 10px;
+                  font-size: 13px;
+                  color: #374151;
+                  line-height: 1.5;
+                }
+                table {
+                  width: 100%;
+                  border-collapse: collapse;
+                  margin-top: 14px;
+                }
+                td {
+                  padding: 8px 0;
+                  border-bottom: 1px dashed #d1d5db;
+                  vertical-align: top;
+                }
+                td:first-child {
+                  width: 42%;
+                  color: #4b5563;
+                }
+                .signature-wrap {
+                  margin-top: 26px;
+                  display: flex;
+                  justify-content: flex-end;
+                }
+                .signature-box {
+                  width: 260px;
+                  text-align: center;
+                  position: relative;
+                }
+                .stamp {
+                  position: absolute;
+                  top: 22px;
+                  left: 50%;
+                  transform: translateX(-50%) rotate(-15deg);
+                  width: 120px;
+                  height: 120px;
+                  border: 3px solid rgba(220, 38, 38, 0.7);
+                  border-radius: 50%;
+                  color: rgba(220, 38, 38, 0.75);
+                  font-weight: 700;
+                  font-size: 14px;
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                }
+                .sign-space {
+                  margin-top: 68px;
+                  height: 56px;
+                }
+                .sign-name {
+                  margin-top: 6px;
+                  font-weight: 700;
+                  border-top: 1px solid #9ca3af;
+                  display: inline-block;
+                  padding-top: 4px;
+                  min-width: 170px;
+                }
+                .footer {
+                  margin-top: 18px;
+                  font-size: 12px;
+                  color: #4b5563;
+                }
+              </style>
+            </head>
+            <body>
+              <div class="box">
+                <div class="header">
+                  <div class="logo">ZIS</div>
+                  <div class="title">
+                    <h1>Kwitansi Zakat & Infaq</h1>
+                    <p>Masjid • Bukti Pembayaran Resmi</p>
+                  </div>
+                </div>
+                <div class="meta">
+                  <div>No. Kwitansi: <strong>${nomorKwitansi}</strong></div>
+                  <div>Tanggal: ${tanggal}</div>
+                </div>
+                <table>
+                  <tr><td>Nama Kepala Keluarga</td><td><strong>${escapeHtml(item.nama_kk)}</strong></td></tr>
+                  <tr><td>Alamat Muzaqi</td><td>${escapeHtml(item.alamat_muzaqi || '-')}</td></tr>
+                  <tr><td>Jumlah Jiwa</td><td>${item.jumlah_jiwa} jiwa</td></tr>
+                  <tr><td>Jenis Pembayaran</td><td>${item.jenis_bayar}</td></tr>
+                  <tr><td>Nominal Zakat</td><td>${nominalZakatTampil}</td></tr>
+                  <tr><td>Nominal Infaq</td><td>${formatRupiah(item.nominal_infaq)}</td></tr>
+                </table>
+                <div class="signature-wrap">
+                  <div class="signature-box">
+                    <div>Petugas Zakat</div>
+                    <div class="stamp">LUNAS</div>
+                    <div class="sign-space"></div>
+                    <div class="sign-name">(__________________)</div>
+                  </div>
+                </div>
+                <p class="footer">Kwitansi ini dicetak otomatis dari sistem pengelola zakat masjid.</p>
+              </div>
+            </body>
+          </html>
+        `);
+        printWindow.document.close();
+        printWindow.onload = () => {
+          printWindow.print();
+          setTimeout(() => {
+            printWindow.close();
+          }, 300);
+        };
       }
 
       async function loadTransaksi() {
-        const response = await fetch('/api/transaksi');
+        const params = new URLSearchParams();
+        if (filterStartDate.value) {
+          params.set('start_date', filterStartDate.value);
+        }
+        if (filterEndDate.value) {
+          params.set('end_date', filterEndDate.value);
+        }
+
+        const url = params.toString() ? `/api/transaksi?${params.toString()}` : '/api/transaksi';
+        const response = await fetch(url);
         if (!response.ok) {
-          throw new Error('Gagal mengambil transaksi');
+          const errorRes = await response.json().catch(() => ({}));
+          throw new Error(errorRes.message || 'Gagal mengambil transaksi');
         }
 
         const data = await response.json();
         transaksiCache = data;
+        transaksiFilteredCache = data;
         bodyTransaksi.innerHTML = '';
 
         if (data.length === 0) {
@@ -255,20 +526,25 @@
         }
 
         data.forEach((item) => {
+          const noKwitansi = getNoKwitansi(item);
           const row = document.createElement('tr');
           row.innerHTML = `
-            <td>${item.id}</td>
-            <td>${item.nama_kk}</td>
+            <td>${escapeHtml(item.nama_kk)}</td>
+            <td>${escapeHtml(item.alamat_muzaqi || '-')}</td>
             <td>${item.jumlah_jiwa}</td>
             <td>${item.jenis_bayar}</td>
             <td>${item.jenis_bayar === 'Uang' ? formatRupiah(item.nominal_zakat) : formatAngka(item.nominal_zakat) + ' kg'}</td>
             <td>${formatRupiah(item.nominal_infaq)}</td>
-            <td>${new Date(item.created_at).toLocaleString('id-ID')}</td>
+            <td>
+              <div>${new Date(item.created_at).toLocaleString('id-ID')}</div>
+              <small class="text-muted">${noKwitansi}</small>
+            </td>
             <td>
               <button
                 class="btn btn-sm btn-primary me-1"
                 data-edit-id="${item.id}"
               >Edit</button>
+              <button class="btn btn-sm btn-outline-success me-1" data-print-id="${item.id}">Cetak</button>
               <button class="btn btn-sm btn-danger" data-id="${item.id}">Hapus</button>
             </td>
           `;
@@ -280,12 +556,213 @@
         await Promise.all([loadRekap(), loadTransaksi()]);
       }
 
+      function printRekapMuzaki() {
+        if (transaksiFilteredCache.length === 0) {
+          alert('Tidak ada data pada periode yang dipilih.');
+          return;
+        }
+
+        const totalJiwa = transaksiFilteredCache.reduce((acc, item) => acc + Number(item.jumlah_jiwa || 0), 0);
+        const totalBeras = transaksiFilteredCache.reduce(
+          (acc, item) => acc + (item.jenis_bayar === 'Beras' ? Number(item.nominal_zakat || 0) : 0),
+          0,
+        );
+        const totalUangZakat = transaksiFilteredCache.reduce(
+          (acc, item) => acc + (item.jenis_bayar === 'Uang' ? Number(item.nominal_zakat || 0) : 0),
+          0,
+        );
+
+        const rowsHtml = transaksiFilteredCache
+          .map((item, index) => {
+            const nominalZakat =
+              item.jenis_bayar === 'Uang'
+                ? formatRupiah(item.nominal_zakat)
+                : `${formatAngka(item.nominal_zakat)} kg`;
+            return `
+              <tr>
+                <td>${index + 1}</td>
+                <td>${escapeHtml(item.nama_kk)}</td>
+                <td>${escapeHtml(item.alamat_muzaqi || '-')}</td>
+                <td>${item.jumlah_jiwa}</td>
+                <td>${item.jenis_bayar}</td>
+                <td>${nominalZakat}</td>
+              </tr>
+            `;
+          })
+          .join('');
+
+        const printWindow = window.open('', '_blank', 'width=1000,height=850');
+        if (!printWindow) {
+          alert('Popup diblokir browser. Izinkan popup untuk mencetak laporan.');
+          return;
+        }
+
+        printWindow.document.write(`
+          <!doctype html>
+          <html lang="id">
+            <head>
+              <meta charset="UTF-8" />
+              <title>Rekap Muzaqi</title>
+              <style>
+                body { font-family: Arial, sans-serif; padding: 22px; color: #1f2937; }
+                h1 { margin: 0; font-size: 22px; }
+                .sub { margin-top: 4px; color: #4b5563; }
+                .summary { margin-top: 14px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 18px; }
+                .summary p { margin: 0; }
+                table { width: 100%; margin-top: 16px; border-collapse: collapse; }
+                th, td { border: 1px solid #d1d5db; padding: 7px 8px; text-align: left; font-size: 12px; }
+                th { background: #f3f4f6; }
+                .footer { margin-top: 16px; font-size: 12px; color: #4b5563; }
+              </style>
+            </head>
+            <body>
+              <h1>Rekap Muzaqi</h1>
+              <p class="sub">Periode: ${getActiveDateRangeLabel()}</p>
+              <div class="summary">
+                <p>Total Transaksi: <strong>${transaksiFilteredCache.length}</strong></p>
+                <p>Total Jiwa: <strong>${formatAngka(totalJiwa)}</strong></p>
+                <p>Total Beras: <strong>${formatAngka(totalBeras)} kg</strong></p>
+                <p>Total Uang Zakat: <strong>${formatRupiah(totalUangZakat)}</strong></p>
+              </div>
+              <table>
+                <thead>
+                  <tr>
+                    <th>No</th>
+                    <th>Nama KK</th>
+                    <th>Alamat Muzaqi</th>
+                    <th>Jiwa</th>
+                    <th>Jenis</th>
+                    <th>Nominal Zakat</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${rowsHtml}
+                </tbody>
+              </table>
+            </body>
+          </html>
+        `);
+
+        printWindow.document.close();
+        printWindow.onload = () => {
+          printWindow.print();
+          setTimeout(() => {
+            printWindow.close();
+          }, 300);
+        };
+      }
+
+      function printRekapDistribusi() {
+        if (transaksiFilteredCache.length === 0) {
+          alert('Tidak ada data pada periode yang dipilih.');
+          return;
+        }
+
+        const totalBeras = transaksiFilteredCache.reduce(
+          (acc, item) => acc + (item.jenis_bayar === 'Beras' ? Number(item.nominal_zakat || 0) : 0),
+          0,
+        );
+        const totalUangZakat = transaksiFilteredCache.reduce(
+          (acc, item) => acc + (item.jenis_bayar === 'Uang' ? Number(item.nominal_zakat || 0) : 0),
+          0,
+        );
+        const totalInfaq = transaksiFilteredCache.reduce((acc, item) => acc + Number(item.nominal_infaq || 0), 0);
+
+        const distribusiUang = {
+          fakir_miskin: Number((totalUangZakat * 0.625).toFixed(2)),
+          amil: Number((totalUangZakat * 0.08).toFixed(2)),
+          fisabilillah: Number((totalUangZakat * 0.11).toFixed(2)),
+          lainnya: Number((totalUangZakat * 0.185).toFixed(2)),
+        };
+
+        const distribusiBeras = {
+          fakir_miskin: Number((totalBeras * 0.625).toFixed(2)),
+          amil: Number((totalBeras * 0.08).toFixed(2)),
+          fisabilillah: Number((totalBeras * 0.11).toFixed(2)),
+          lainnya: Number((totalBeras * 0.185).toFixed(2)),
+        };
+
+        const printWindow = window.open('', '_blank', 'width=900,height=850');
+        if (!printWindow) {
+          alert('Popup diblokir browser. Izinkan popup untuk mencetak laporan.');
+          return;
+        }
+
+        printWindow.document.write(`
+          <!doctype html>
+          <html lang="id">
+            <head>
+              <meta charset="UTF-8" />
+              <title>Rekap Distribusi</title>
+              <style>
+                body { font-family: Arial, sans-serif; padding: 22px; color: #1f2937; }
+                h1 { margin: 0; font-size: 22px; }
+                h2 { margin: 20px 0 8px; font-size: 16px; }
+                .sub { margin-top: 4px; color: #4b5563; }
+                table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+                th, td { border: 1px solid #d1d5db; padding: 8px; text-align: left; }
+                th { background: #f3f4f6; }
+                .note { margin-top: 14px; color: #4b5563; font-size: 12px; }
+              </style>
+            </head>
+            <body>
+              <h1>Rekap Distribusi Zakat</h1>
+              <p class="sub">Periode: ${getActiveDateRangeLabel()}</p>
+
+              <h2>Ringkasan Sumber Dana</h2>
+              <table>
+                <tbody>
+                  <tr><td>Total Zakat Uang</td><td>${formatRupiah(totalUangZakat)}</td></tr>
+                  <tr><td>Total Zakat Beras</td><td>${formatAngka(totalBeras)} kg</td></tr>
+                  <tr><td>Total Infaq (Terpisah Kas Masjid)</td><td>${formatRupiah(totalInfaq)}</td></tr>
+                </tbody>
+              </table>
+
+              <h2>Distribusi Zakat Uang</h2>
+              <table>
+                <thead>
+                  <tr><th>Asnaf</th><th>Persentase</th><th>Nominal</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td>Fakir Miskin</td><td>62.5%</td><td>${formatRupiah(distribusiUang.fakir_miskin)}</td></tr>
+                  <tr><td>Amil</td><td>8%</td><td>${formatRupiah(distribusiUang.amil)}</td></tr>
+                  <tr><td>Fisabilillah</td><td>11%</td><td>${formatRupiah(distribusiUang.fisabilillah)}</td></tr>
+                  <tr><td>Lainnya</td><td>18.5%</td><td>${formatRupiah(distribusiUang.lainnya)}</td></tr>
+                </tbody>
+              </table>
+
+              <h2>Distribusi Zakat Beras</h2>
+              <table>
+                <thead>
+                  <tr><th>Asnaf</th><th>Persentase</th><th>Nominal</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td>Fakir Miskin</td><td>62.5%</td><td>${formatAngka(distribusiBeras.fakir_miskin)} kg</td></tr>
+                  <tr><td>Amil</td><td>8%</td><td>${formatAngka(distribusiBeras.amil)} kg</td></tr>
+                  <tr><td>Fisabilillah</td><td>11%</td><td>${formatAngka(distribusiBeras.fisabilillah)} kg</td></tr>
+                  <tr><td>Lainnya</td><td>18.5%</td><td>${formatAngka(distribusiBeras.lainnya)} kg</td></tr>
+                </tbody>
+              </table>
+            </body>
+          </html>
+        `);
+
+        printWindow.document.close();
+        printWindow.onload = () => {
+          printWindow.print();
+          setTimeout(() => {
+            printWindow.close();
+          }, 300);
+        };
+      }
+
       form.addEventListener('submit', async (event) => {
         event.preventDefault();
         formMessage.textContent = '';
 
         const payload = {
           nama_kk: document.getElementById('nama_kk').value.trim(),
+          alamat_muzaqi: document.getElementById('alamat_muzaqi').value.trim(),
           jumlah_jiwa: Number(document.getElementById('jumlah_jiwa').value),
           jenis_bayar: document.getElementById('jenis_bayar').value,
           nominal_infaq: document.getElementById('nominal_infaq').value,
@@ -327,6 +804,66 @@
         }, 0);
       });
 
+      btnApplyFilter.addEventListener('click', async () => {
+        try {
+          if (filterStartDate.value && filterEndDate.value && filterStartDate.value > filterEndDate.value) {
+            throw new Error('Tanggal awal tidak boleh melebihi tanggal akhir.');
+          }
+
+          formMessage.className = 'mt-3 mb-0 small text-muted';
+          formMessage.textContent = 'Memuat transaksi dan rekap sesuai filter...';
+          await Promise.all([loadTransaksi(), loadRekap()]);
+          formMessage.className = 'mt-3 mb-0 small text-success';
+          formMessage.textContent = `Filter aktif: ${getActiveDateRangeLabel()}.`;
+        } catch (error) {
+          formMessage.className = 'mt-3 mb-0 small text-danger';
+          formMessage.textContent = error.message;
+        }
+      });
+
+      btnClearFilter.addEventListener('click', async () => {
+        filterStartDate.value = '';
+        filterEndDate.value = '';
+        formMessage.className = 'mt-3 mb-0 small text-muted';
+        formMessage.textContent = 'Filter direset. Memuat ulang transaksi dan rekap...';
+        try {
+          await Promise.all([loadTransaksi(), loadRekap()]);
+          formMessage.className = 'mt-3 mb-0 small text-success';
+          formMessage.textContent = 'Filter berhasil direset.';
+        } catch (error) {
+          formMessage.className = 'mt-3 mb-0 small text-danger';
+          formMessage.textContent = error.message;
+        }
+      });
+
+      btnPrintMuzakiReport.addEventListener('click', async () => {
+        try {
+          if (filterStartDate.value && filterEndDate.value && filterStartDate.value > filterEndDate.value) {
+            throw new Error('Tanggal awal tidak boleh melebihi tanggal akhir.');
+          }
+
+          await loadTransaksi();
+          printRekapMuzaki();
+        } catch (error) {
+          formMessage.className = 'mt-3 mb-0 small text-danger';
+          formMessage.textContent = error.message;
+        }
+      });
+
+      btnPrintDistribusiReport.addEventListener('click', async () => {
+        try {
+          if (filterStartDate.value && filterEndDate.value && filterStartDate.value > filterEndDate.value) {
+            throw new Error('Tanggal awal tidak boleh melebihi tanggal akhir.');
+          }
+
+          await Promise.all([loadTransaksi(), loadRekap()]);
+          printRekapDistribusi();
+        } catch (error) {
+          formMessage.className = 'mt-3 mb-0 small text-danger';
+          formMessage.textContent = error.message;
+        }
+      });
+
       bodyTransaksi.addEventListener('click', async (event) => {
         const editButton = event.target.closest('button[data-edit-id]');
         if (editButton) {
@@ -339,7 +876,20 @@
 
           startEdit(data);
           formMessage.className = 'mt-3 mb-0 small text-primary';
-          formMessage.textContent = `Mode edit aktif untuk ID ${data.id}.`;
+          formMessage.textContent = 'Mode edit aktif.';
+          return;
+        }
+
+        const printButton = event.target.closest('button[data-print-id]');
+        if (printButton) {
+          const printId = Number(printButton.getAttribute('data-print-id'));
+          const data = transaksiCache.find((item) => item.id === printId);
+          if (!data) {
+            alert('Data kwitansi tidak ditemukan. Silakan refresh halaman.');
+            return;
+          }
+
+          printKwitansi(data);
           return;
         }
 
