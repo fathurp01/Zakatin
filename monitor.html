@@ -50,7 +50,8 @@
         <div class="card-body">
           <p class="mb-1 fw-semibold">Pengingat Warga</p>
           <p class="mb-0 small text-muted">
-            Jika nama keluarga Anda belum muncul pada daftar, mohon segera menunaikan zakat melalui panitia masjid.
+           Segera Tunaikan Zakat Fitrah 1447H sebagai penyempurna puasa Ramadhan kita! <br> 
+           jika nama anda belum terupdate, mohon segera konfirmasi kembali kepada panitia masjid.
           </p>
         </div>
       </div>
@@ -129,6 +130,7 @@
                     <th>Jiwa</th>
                     <th>Jenis</th>
                     <th>Nominal Zakat</th>
+                    <th>Infaq</th>
                     <th>Status</th>
                     <th>Waktu</th>
                   </tr>
@@ -214,7 +216,7 @@
         if (data.length === 0) {
           bodyMonitor.innerHTML = `
             <tr>
-              <td colspan="7" class="text-center text-muted py-4">Belum ada data pada periode ini.</td>
+              <td colspan="8" class="text-center text-muted py-4">Belum ada data pada periode ini.</td>
             </tr>
           `;
           return;
@@ -228,6 +230,7 @@
             <td>${item.jumlah_jiwa}</td>
             <td>${item.jenis_bayar}</td>
             <td>${item.jenis_bayar === 'Uang' ? formatRupiah(item.nominal_zakat) : `${formatAngka(item.nominal_zakat)} kg`}</td>
+            <td>${formatRupiah(item.nominal_infaq)}</td>
             <td><span class="badge text-bg-success">Sudah Tunaikan</span></td>
             <td>${new Date(item.created_at).toLocaleString('id-ID')}</td>
           `;
