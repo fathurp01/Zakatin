@@ -6,6 +6,124 @@ const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
+
+function isValidDateString(value) {
+  const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+  return dateRegex.test(value) && !Number.isNaN(Date.parse(value));
+}
+
+function parseDateRange(req, res) {
+  const { start_date: startDate, end_date: endDate } = req.query;
+
+  if (startDate && !isValidDateString(startDate)) {
+    res.status(400).json({ message: 'start_date tidak valid. Gunakan format YYYY-MM-DD.' });
+    return null;
+  }
+
+  if (endDate && !isValidDateString(endDate)) {
+    res.status(400).json({ message: 'end_date tidak valid. Gunakan format YYYY-MM-DD.' });
+    return null;
+  }
+
+  if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
+    res.status(400).json({ message: 'start_date tidak boleh lebih besar dari end_date.' });
+    return null;
+  }
+
+  return { startDate, endDate };
+}
+
+function buildDateFilter(startDate, endDate) {
+  const whereClause = [];
+  const values = [];
+
+  if (startDate) {
+    values.push(startDate);
+    whereClause.push(`created_at >= $${values.length}::date`);
+  }
+
+  if (endDate) {
+    values.push(endDate);
+    whereClause.push(`created_at < ($${values.length}::date + interval '1 day')`);
+  }
+
+  const whereSql = whereClause.length > 0 ? `WHERE ${whereClause.join(' AND ')}` : '';
+  return { whereSql, values };
+}
+
+async function queryTransaksiByDate(startDate, endDate) {
+  const { whereSql, values } = buildDateFilter(startDate, endDate);
+  const query = `
+    SELECT id, nama_kk, alamat_muzaqi, jumlah_jiwa, jenis_bayar, nominal_zakat, nominal_infaq, created_at
+    FROM transaksi_zis
+    ${whereSql}
+    ORDER BY created_at DESC, id DESC
+  `;
+  const { rows } = await pool.query(query, values);
+  return rows;
+}
+
+async function queryRekapByDate(startDate, endDate) {
+  const { whereSql, values } = buildDateFilter(startDate, endDate);
+  const query = `
+    SELECT
+      COUNT(*)::int AS total_kk,
+      COALESCE(SUM(jumlah_jiwa), 0)::int AS total_jiwa,
+      COALESCE(SUM(CASE WHEN jenis_bayar = 'Beras' THEN nominal_zakat ELSE 0 END), 0)::numeric AS total_beras,
+      COALESCE(SUM(CASE WHEN jenis_bayar = 'Uang' THEN nominal_zakat ELSE 0 END), 0)::numeric AS total_uang_zakat,
+      COALESCE(SUM(nominal_infaq), 0)::numeric AS total_infaq
+    FROM transaksi_zis
+    ${whereSql}
+  `;
+  const { rows } = await pool.query(query, values);
+  return rows[0];
+}
+
+function extractAdminToken(req) {
+  const tokenFromHeader = req.get('x-admin-token');
+  const tokenFromQuery = req.query.key;
+  return tokenFromHeader || tokenFromQuery || '';
+}
+
+function ensureAdminTokenConfigured(res) {
+  if (ADMIN_TOKEN) {
+    return true;
+  }
+
+  res.status(500).json({ message: 'ADMIN_TOKEN belum dikonfigurasi di environment.' });
+  return false;
+}
+
+function requireAdminApi(req, res, next) {
+  if (!ensureAdminTokenConfigured(res)) {
+    return;
+  }
+
+  const token = extractAdminToken(req);
+  if (token !== ADMIN_TOKEN) {
+    return res.status(403).json({ message: 'Akses admin ditolak. Token tidak valid.' });
+  }
+
+  next();
+}
+
+function requireAdminPage(req, res, next) {
+  if (!ADMIN_TOKEN) {
+    return res
+      .status(500)
+      .send('ADMIN_TOKEN belum diset. Tambahkan ADMIN_TOKEN pada file .env terlebih dahulu.');
+  }
+
+  const token = extractAdminToken(req);
+  if (token !== ADMIN_TOKEN) {
+    return res
+      .status(403)
+      .send('Akses admin ditolak. Gunakan link admin dengan token valid, contoh: /?key=TOKEN_ANDA');
+  }
+
+  next();
+}
 
 function buildPgConfig() {
   const sslRequired =
@@ -52,7 +170,6 @@ async function ensureSchemaCompatibility() {
 }
 
 app.use(express.json());
-app.use(express.static(__dirname));
 
 function hitungNominalZakat(jumlahJiwa, jenisBayar) {
   if (jenisBayar === 'Beras') {
@@ -64,46 +181,25 @@ function hitungNominalZakat(jumlahJiwa, jenisBayar) {
   throw new Error("jenis_bayar harus 'Uang' atau 'Beras'");
 }
 
-app.get('/api/transaksi', async (req, res) => {
+app.get('/api/public/transaksi', async (req, res) => {
   try {
-    const { start_date: startDate, end_date: endDate } = req.query;
-    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    const dateRange = parseDateRange(req, res);
+    if (!dateRange) return;
 
-    if (startDate && (!dateRegex.test(startDate) || Number.isNaN(Date.parse(startDate)))) {
-      return res.status(400).json({ message: 'start_date tidak valid. Gunakan format YYYY-MM-DD.' });
-    }
+    const rows = await queryTransaksiByDate(dateRange.startDate, dateRange.endDate);
+    res.json(rows);
+  } catch (error) {
+    console.error('GET /api/public/transaksi error:', error);
+    res.status(500).json({ message: 'Gagal mengambil data transaksi.' });
+  }
+});
 
-    if (endDate && (!dateRegex.test(endDate) || Number.isNaN(Date.parse(endDate)))) {
-      return res.status(400).json({ message: 'end_date tidak valid. Gunakan format YYYY-MM-DD.' });
-    }
+app.get('/api/transaksi', requireAdminApi, async (req, res) => {
+  try {
+    const dateRange = parseDateRange(req, res);
+    if (!dateRange) return;
 
-    if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
-      return res.status(400).json({ message: 'start_date tidak boleh lebih besar dari end_date.' });
-    }
-
-    const whereClause = [];
-    const values = [];
-
-    if (startDate) {
-      values.push(startDate);
-      whereClause.push(`created_at >= $${values.length}::date`);
-    }
-
-    if (endDate) {
-      values.push(endDate);
-      whereClause.push(`created_at < ($${values.length}::date + interval '1 day')`);
-    }
-
-    const whereSql = whereClause.length > 0 ? `WHERE ${whereClause.join(' AND ')}` : '';
-
-    const query = `
-      SELECT id, nama_kk, alamat_muzaqi, jumlah_jiwa, jenis_bayar, nominal_zakat, nominal_infaq, created_at
-      FROM transaksi_zis
-      ${whereSql}
-      ORDER BY created_at DESC, id DESC
-    `;
-
-    const { rows } = await pool.query(query, values);
+    const rows = await queryTransaksiByDate(dateRange.startDate, dateRange.endDate);
     res.json(rows);
   } catch (error) {
     console.error('GET /api/transaksi error:', error);
@@ -111,7 +207,7 @@ app.get('/api/transaksi', async (req, res) => {
   }
 });
 
-app.post('/api/transaksi', async (req, res) => {
+app.post('/api/transaksi', requireAdminApi, async (req, res) => {
   try {
     const { nama_kk, alamat_muzaqi, jumlah_jiwa, jenis_bayar, nominal_infaq } = req.body;
 
@@ -155,7 +251,7 @@ app.post('/api/transaksi', async (req, res) => {
   }
 });
 
-app.put('/api/transaksi/:id', async (req, res) => {
+app.put('/api/transaksi/:id', requireAdminApi, async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) {
@@ -214,7 +310,7 @@ app.put('/api/transaksi/:id', async (req, res) => {
   }
 });
 
-app.delete('/api/transaksi/:id', async (req, res) => {
+app.delete('/api/transaksi/:id', requireAdminApi, async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) {
@@ -234,51 +330,53 @@ app.delete('/api/transaksi/:id', async (req, res) => {
   }
 });
 
-app.get('/api/rekap', async (req, res) => {
+app.get('/api/public/rekap', async (req, res) => {
   try {
-    const { start_date: startDate, end_date: endDate } = req.query;
-    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    const dateRange = parseDateRange(req, res);
+    if (!dateRange) return;
 
-    if (startDate && (!dateRegex.test(startDate) || Number.isNaN(Date.parse(startDate)))) {
-      return res.status(400).json({ message: 'start_date tidak valid. Gunakan format YYYY-MM-DD.' });
-    }
+    const data = await queryRekapByDate(dateRange.startDate, dateRange.endDate);
 
-    if (endDate && (!dateRegex.test(endDate) || Number.isNaN(Date.parse(endDate)))) {
-      return res.status(400).json({ message: 'end_date tidak valid. Gunakan format YYYY-MM-DD.' });
-    }
+    const totalDanaDistribusi = Number(data.total_uang_zakat) + Number(data.total_infaq);
+    const totalBerasDistribusi = Number(data.total_beras);
 
-    if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
-      return res.status(400).json({ message: 'start_date tidak boleh lebih besar dari end_date.' });
-    }
+    const distribusi = {
+      fakir_miskin: Number((totalDanaDistribusi * 0.625).toFixed(2)),
+      amil: Number((totalDanaDistribusi * 0.08).toFixed(2)),
+      fisabilillah: Number((totalDanaDistribusi * 0.11).toFixed(2)),
+      lainnya: Number((totalDanaDistribusi * 0.185).toFixed(2)),
+    };
 
-    const whereClause = [];
-    const values = [];
+    const distribusiBeras = {
+      fakir_miskin: Number((totalBerasDistribusi * 0.625).toFixed(2)),
+      amil: Number((totalBerasDistribusi * 0.08).toFixed(2)),
+      fisabilillah: Number((totalBerasDistribusi * 0.11).toFixed(2)),
+      lainnya: Number((totalBerasDistribusi * 0.185).toFixed(2)),
+    };
 
-    if (startDate) {
-      values.push(startDate);
-      whereClause.push(`created_at >= $${values.length}::date`);
-    }
+    res.json({
+      total_kk: data.total_kk,
+      total_jiwa: data.total_jiwa,
+      total_beras: Number(data.total_beras),
+      total_uang_zakat: Number(data.total_uang_zakat),
+      total_infaq: Number(data.total_infaq),
+      total_dana_distribusi: Number(totalDanaDistribusi.toFixed(2)),
+      total_beras_distribusi: Number(totalBerasDistribusi.toFixed(2)),
+      distribusi,
+      distribusi_beras: distribusiBeras,
+    });
+  } catch (error) {
+    console.error('GET /api/public/rekap error:', error);
+    res.status(500).json({ message: 'Gagal mengambil data rekap.' });
+  }
+});
 
-    if (endDate) {
-      values.push(endDate);
-      whereClause.push(`created_at < ($${values.length}::date + interval '1 day')`);
-    }
+app.get('/api/rekap', requireAdminApi, async (req, res) => {
+  try {
+    const dateRange = parseDateRange(req, res);
+    if (!dateRange) return;
 
-    const whereSql = whereClause.length > 0 ? `WHERE ${whereClause.join(' AND ')}` : '';
-
-    const query = `
-      SELECT
-        COUNT(*)::int AS total_kk,
-        COALESCE(SUM(jumlah_jiwa), 0)::int AS total_jiwa,
-        COALESCE(SUM(CASE WHEN jenis_bayar = 'Beras' THEN nominal_zakat ELSE 0 END), 0)::numeric AS total_beras,
-        COALESCE(SUM(CASE WHEN jenis_bayar = 'Uang' THEN nominal_zakat ELSE 0 END), 0)::numeric AS total_uang_zakat,
-        COALESCE(SUM(nominal_infaq), 0)::numeric AS total_infaq
-      FROM transaksi_zis
-      ${whereSql}
-    `;
-
-    const { rows } = await pool.query(query, values);
-    const data = rows[0];
+    const data = await queryRekapByDate(dateRange.startDate, dateRange.endDate);
 
     const totalDanaDistribusi = Number(data.total_uang_zakat) + Number(data.total_infaq);
     const totalBerasDistribusi = Number(data.total_beras);
@@ -314,9 +412,15 @@ app.get('/api/rekap', async (req, res) => {
   }
 });
 
-app.get('/', (_req, res) => {
+app.get('/', requireAdminPage, (_req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
+
+app.get('/index.html', requireAdminPage, (_req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+app.use(express.static(__dirname));
 
 app.listen(PORT, async () => {
   try {

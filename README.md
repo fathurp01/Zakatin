@@ -16,6 +16,7 @@ Project ini sengaja dibuat sederhana untuk kebutuhan cepat:
 - `POST /api/transaksi`: simpan transaksi baru + hitung otomatis `nominal_zakat`
 - `DELETE /api/transaksi/:id`: hapus transaksi
 - `GET /api/rekap`: rekap total dan distribusi dana
+- Proteksi admin dengan token (`ADMIN_TOKEN`)
 - Cetak kwitansi per transaksi dengan nomor otomatis `KH-YYYY-XXXX`
 - Export print rekap muzaqi (tanpa infaq, untuk laporan kelurahan)
 - Export print rekap distribusi zakat (uang & beras)
@@ -52,6 +53,7 @@ npm install
 
 ```env
 PORT=3000
+ADMIN_TOKEN=replace_with_secure_admin_token
 PGHOST=localhost
 PGPORT=5432
 PGUSER=postgres
@@ -70,8 +72,16 @@ npm start
 ```
 
 6. Akses:
-- App: `http://localhost:3000`
+- App Admin (butuh token): `http://localhost:3000/?key=YOUR_ADMIN_TOKEN`
+- Monitor Warga (publik/read-only): `http://localhost:3000/monitor.html`
 - API Rekap: `http://localhost:3000/api/rekap`
+
+## Endpoint Monitor Publik
+
+- `GET /api/public/transaksi`
+- `GET /api/public/rekap`
+
+Endpoint publik hanya read-only untuk kebutuhan halaman monitor warga.
 
 ## Contoh Payload POST
 

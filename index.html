@@ -209,9 +209,30 @@
       const btnClearFilter = document.getElementById('btnClearFilter');
       const btnPrintMuzakiReport = document.getElementById('btnPrintMuzakiReport');
       const btnPrintDistribusiReport = document.getElementById('btnPrintDistribusiReport');
+      const adminKey = new URLSearchParams(window.location.search).get('key') || '';
       let currentEditId = null;
       let transaksiCache = [];
       let transaksiFilteredCache = [];
+
+      function getAdminHeaders(headers = {}) {
+        return {
+          ...headers,
+          'x-admin-token': adminKey,
+        };
+      }
+
+      async function adminFetch(url, options = {}) {
+        const response = await fetch(url, {
+          ...options,
+          headers: getAdminHeaders(options.headers || {}),
+        });
+
+        if (response.status === 403) {
+          throw new Error('Akses admin ditolak. Gunakan link admin dengan token valid.');
+        }
+
+        return response;
+      }
 
       function setFormMode(mode) {
         const submitBtn = form.querySelector('button[type="submit"]');
@@ -299,7 +320,7 @@
         }
 
         const url = params.toString() ? `/api/rekap?${params.toString()}` : '/api/rekap';
-        const response = await fetch(url);
+        const response = await adminFetch(url);
         if (!response.ok) {
           const errorRes = await response.json().catch(() => ({}));
           throw new Error(errorRes.message || 'Gagal mengambil rekap');
@@ -505,7 +526,7 @@
         }
 
         const url = params.toString() ? `/api/transaksi?${params.toString()}` : '/api/transaksi';
-        const response = await fetch(url);
+        const response = await adminFetch(url);
         if (!response.ok) {
           const errorRes = await response.json().catch(() => ({}));
           throw new Error(errorRes.message || 'Gagal mengambil transaksi');
@@ -773,7 +794,7 @@
           const url = isEditMode ? `/api/transaksi/${currentEditId}` : '/api/transaksi';
           const method = isEditMode ? 'PUT' : 'POST';
 
-          const response = await fetch(url, {
+          const response = await adminFetch(url, {
             method,
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
@@ -901,7 +922,7 @@
         if (!confirmDelete) return;
 
         try {
-          const response = await fetch(`/api/transaksi/${id}`, {
+          const response = await adminFetch(`/api/transaksi/${id}`, {
             method: 'DELETE',
           });
 
@@ -916,10 +937,21 @@
         }
       });
 
-      refreshAll().catch((error) => {
+      if (!adminKey) {
         formMessage.className = 'mt-3 mb-0 small text-danger';
-        formMessage.textContent = error.message;
-      });
+        formMessage.textContent = 'Token admin tidak ditemukan. Buka halaman dengan format /?key=TOKEN_ADMIN.';
+      } else {
+        refreshAll().catch((error) => {
+          formMessage.className = 'mt-3 mb-0 small text-danger';
+          formMessage.textContent = error.message;
+        });
+      }
+
+      if (!adminKey) {
+        form.querySelectorAll('input, select, button').forEach((el) => {
+          el.disabled = true;
+        });
+      }
 
       setFormMode('create');
     </script>

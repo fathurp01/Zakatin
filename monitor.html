@@ -185,7 +185,7 @@
 
       async function loadRekap() {
         const params = buildParams();
-        const url = params.toString() ? `/api/rekap?${params.toString()}` : '/api/rekap';
+        const url = params.toString() ? `/api/public/rekap?${params.toString()}` : '/api/public/rekap';
         const response = await fetch(url);
         if (!response.ok) {
           const result = await response.json().catch(() => ({}));
@@ -201,7 +201,7 @@
 
       async function loadMonitorTable() {
         const params = buildParams();
-        const url = params.toString() ? `/api/transaksi?${params.toString()}` : '/api/transaksi';
+        const url = params.toString() ? `/api/public/transaksi?${params.toString()}` : '/api/public/transaksi';
         const response = await fetch(url);
         if (!response.ok) {
           const result = await response.json().catch(() => ({}));
