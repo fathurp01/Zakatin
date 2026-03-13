@@ -161,12 +161,24 @@ function buildPgConfig() {
 }
 
 const pool = new Pool(buildPgConfig());
+let initPromise;
 
 async function ensureSchemaCompatibility() {
   await pool.query(`
     ALTER TABLE transaksi_zis
     ADD COLUMN IF NOT EXISTS alamat_muzaqi VARCHAR(255) NOT NULL DEFAULT '-'
   `);
+}
+
+async function initApp() {
+  if (!initPromise) {
+    initPromise = (async () => {
+      await ensureSchemaCompatibility();
+      await pool.query('SELECT 1');
+    })();
+  }
+
+  return initPromise;
 }
 
 app.use(express.json());
@@ -422,13 +434,19 @@ app.get('/index.html', requireAdminPage, (_req, res) => {
 
 app.use(express.static(__dirname));
 
-app.listen(PORT, async () => {
-  try {
-    await ensureSchemaCompatibility();
-    await pool.query('SELECT 1');
-    console.log(`Server berjalan di http://localhost:${PORT}`);
-    console.log('Koneksi PostgreSQL berhasil.');
-  } catch (error) {
-    console.error('Server jalan, tapi gagal koneksi PostgreSQL:', error.message);
-  }
-});
+if (require.main === module) {
+  app.listen(PORT, async () => {
+    try {
+      await initApp();
+      console.log(`Server berjalan di http://localhost:${PORT}`);
+      console.log('Koneksi PostgreSQL berhasil.');
+    } catch (error) {
+      console.error('Server jalan, tapi gagal koneksi PostgreSQL:', error.message);
+    }
+  });
+}
+
+module.exports = {
+  app,
+  initApp,
+};

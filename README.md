@@ -102,3 +102,42 @@ Endpoint publik hanya read-only untuk kebutuhan halaman monitor warga.
 - File `.env` sudah di-ignore dan tidak ikut ter-upload.
 - Gunakan `.env.example` untuk membagikan contoh konfigurasi.
 - Pastikan password/database credential asli tidak ditaruh di file lain.
+
+## Deploy ke Vercel
+
+Project ini sudah disiapkan agar bisa jalan di Vercel dengan entrypoint serverless `api/index.js`.
+
+### 1) Push ke GitHub
+
+Pastikan seluruh perubahan terbaru sudah ter-push ke repository GitHub.
+
+### 2) Import Project ke Vercel
+
+1. Buka dashboard Vercel.
+2. Klik **Add New -> Project**.
+3. Pilih repository ini.
+4. Framework preset biarkan **Other**.
+
+### 3) Set Environment Variables di Vercel
+
+Tambahkan variabel berikut pada menu **Settings -> Environment Variables**:
+
+- `DATABASE_URL`
+- `PGSSLMODE` dengan nilai `require`
+- `ADMIN_TOKEN`
+
+Opsional (tidak wajib di Vercel):
+- `PORT`
+
+### 4) Deploy
+
+Klik **Deploy**. Jika sukses, Vercel akan memberi URL production.
+
+### 5) Akses Aplikasi
+
+- Admin: `https://domain-kamu.vercel.app/?key=ADMIN_TOKEN_KAMU`
+- Monitor publik: `https://domain-kamu.vercel.app/monitor.html`
+
+### 6) Redeploy setelah update
+
+Setiap push baru ke branch yang terhubung akan otomatis memicu deploy ulang.
