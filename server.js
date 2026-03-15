@@ -13,6 +13,20 @@ function isValidDateString(value) {
   return dateRegex.test(value) && !Number.isNaN(Date.parse(value));
 }
 
+function isValidDateTimeLocalString(value) {
+  const dateTimeRegex = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/;
+  return dateTimeRegex.test(value) && !Number.isNaN(Date.parse(value));
+}
+
+function normalizeTimestampInput(value) {
+  const trimmed = String(value).trim();
+  const withSpace = trimmed.replace('T', ' ');
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(withSpace)) {
+    return `${withSpace}:00`;
+  }
+  return withSpace;
+}
+
 function parseDateRange(req, res) {
   const { start_date: startDate, end_date: endDate } = req.query;
 
@@ -221,7 +235,8 @@ app.get('/api/transaksi', requireAdminApi, async (req, res) => {
 
 app.post('/api/transaksi', requireAdminApi, async (req, res) => {
   try {
-    const { nama_kk, alamat_muzaqi, tanggal_transaksi, jumlah_jiwa, jenis_bayar, nominal_infaq } = req.body;
+    const { nama_kk, alamat_muzaqi, waktu_transaksi, tanggal_transaksi, jumlah_jiwa, jenis_bayar, nominal_infaq } =
+      req.body;
 
     if (!nama_kk || typeof nama_kk !== 'string') {
       return res.status(400).json({ message: 'nama_kk wajib diisi.' });
@@ -245,16 +260,32 @@ app.post('/api/transaksi', requireAdminApi, async (req, res) => {
       return res.status(400).json({ message: 'nominal_infaq harus angka >= 0.' });
     }
 
-    const tanggalTransaksi = tanggal_transaksi === undefined || tanggal_transaksi === '' ? null : String(tanggal_transaksi);
-    if (tanggalTransaksi && !isValidDateString(tanggalTransaksi)) {
+    const waktuTransaksiRaw =
+      waktu_transaksi === undefined || waktu_transaksi === '' ? null : String(waktu_transaksi);
+    const tanggalTransaksiRaw =
+      tanggal_transaksi === undefined || tanggal_transaksi === '' ? null : String(tanggal_transaksi);
+
+    if (waktuTransaksiRaw && !isValidDateTimeLocalString(waktuTransaksiRaw)) {
+      return res
+        .status(400)
+        .json({ message: 'waktu_transaksi tidak valid. Gunakan format YYYY-MM-DDTHH:mm (contoh: 2026-03-15T20:30).' });
+    }
+
+    if (!waktuTransaksiRaw && tanggalTransaksiRaw && !isValidDateString(tanggalTransaksiRaw)) {
       return res.status(400).json({ message: 'tanggal_transaksi tidak valid. Gunakan format YYYY-MM-DD.' });
     }
+
+    const createdAtInput = waktuTransaksiRaw
+      ? normalizeTimestampInput(waktuTransaksiRaw)
+      : tanggalTransaksiRaw
+        ? `${tanggalTransaksiRaw} 00:00:00`
+        : null;
 
     const nominalZakat = hitungNominalZakat(jumlahJiwaNum, jenis_bayar);
 
     const insertQuery = `
       INSERT INTO transaksi_zis (nama_kk, alamat_muzaqi, jumlah_jiwa, jenis_bayar, nominal_zakat, nominal_infaq, created_at)
-      VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7::date::timestamp, CURRENT_TIMESTAMP))
+      VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7::timestamp, CURRENT_TIMESTAMP))
       RETURNING id, nama_kk, alamat_muzaqi, jumlah_jiwa, jenis_bayar, nominal_zakat, nominal_infaq, created_at
     `;
 
@@ -265,7 +296,7 @@ app.post('/api/transaksi', requireAdminApi, async (req, res) => {
       jenis_bayar,
       nominalZakat,
       infaqNum,
-      tanggalTransaksi,
+      createdAtInput,
     ];
     const { rows } = await pool.query(insertQuery, values);
 
@@ -283,7 +314,8 @@ app.put('/api/transaksi/:id', requireAdminApi, async (req, res) => {
       return res.status(400).json({ message: 'id tidak valid.' });
     }
 
-    const { nama_kk, alamat_muzaqi, tanggal_transaksi, jumlah_jiwa, jenis_bayar, nominal_infaq } = req.body;
+    const { nama_kk, alamat_muzaqi, waktu_transaksi, tanggal_transaksi, jumlah_jiwa, jenis_bayar, nominal_infaq } =
+      req.body;
 
     if (!nama_kk || typeof nama_kk !== 'string') {
       return res.status(400).json({ message: 'nama_kk wajib diisi.' });
@@ -307,10 +339,26 @@ app.put('/api/transaksi/:id', requireAdminApi, async (req, res) => {
       return res.status(400).json({ message: 'nominal_infaq harus angka >= 0.' });
     }
 
-    const tanggalTransaksi = tanggal_transaksi === undefined || tanggal_transaksi === '' ? null : String(tanggal_transaksi);
-    if (tanggalTransaksi && !isValidDateString(tanggalTransaksi)) {
+    const waktuTransaksiRaw =
+      waktu_transaksi === undefined || waktu_transaksi === '' ? null : String(waktu_transaksi);
+    const tanggalTransaksiRaw =
+      tanggal_transaksi === undefined || tanggal_transaksi === '' ? null : String(tanggal_transaksi);
+
+    if (waktuTransaksiRaw && !isValidDateTimeLocalString(waktuTransaksiRaw)) {
+      return res
+        .status(400)
+        .json({ message: 'waktu_transaksi tidak valid. Gunakan format YYYY-MM-DDTHH:mm (contoh: 2026-03-15T20:30).' });
+    }
+
+    if (!waktuTransaksiRaw && tanggalTransaksiRaw && !isValidDateString(tanggalTransaksiRaw)) {
       return res.status(400).json({ message: 'tanggal_transaksi tidak valid. Gunakan format YYYY-MM-DD.' });
     }
+
+    const createdAtInput = waktuTransaksiRaw
+      ? normalizeTimestampInput(waktuTransaksiRaw)
+      : tanggalTransaksiRaw
+        ? `${tanggalTransaksiRaw} 00:00:00`
+        : null;
 
     const nominalZakat = hitungNominalZakat(jumlahJiwaNum, jenis_bayar);
 
@@ -322,7 +370,7 @@ app.put('/api/transaksi/:id', requireAdminApi, async (req, res) => {
           jenis_bayar = $4,
           nominal_zakat = $5,
           nominal_infaq = $6,
-          created_at = COALESCE($7::date::timestamp, created_at)
+          created_at = COALESCE($7::timestamp, created_at)
       WHERE id = $8
       RETURNING id, nama_kk, alamat_muzaqi, jumlah_jiwa, jenis_bayar, nominal_zakat, nominal_infaq, created_at
     `;
@@ -334,7 +382,7 @@ app.put('/api/transaksi/:id', requireAdminApi, async (req, res) => {
       jenis_bayar,
       nominalZakat,
       infaqNum,
-      tanggalTransaksi,
+      createdAtInput,
       id,
     ];
     const { rows, rowCount } = await pool.query(updateQuery, values);

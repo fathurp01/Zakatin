@@ -132,8 +132,8 @@
                 <input type="text" class="form-control" id="alamat_muzaqi" required />
               </div>
               <div class="col-12 col-md-3">
-                <label for="tanggal_transaksi" class="form-label">Tanggal Transaksi</label>
-                <input type="date" class="form-control" id="tanggal_transaksi" required />
+                <label for="waktu_transaksi" class="form-label">Tanggal & Jam Transaksi</label>
+                <input type="datetime-local" class="form-control" id="waktu_transaksi" />
               </div>
               <div class="col-12 col-md-3">
                 <label for="jumlah_jiwa" class="form-label">Jumlah Jiwa</label>
@@ -218,17 +218,18 @@
       let transaksiCache = [];
       let transaksiFilteredCache = [];
 
-      function getTodayDateInputValue() {
+      function getNowDateTimeLocalValue() {
         const now = new Date();
+        now.setSeconds(0, 0);
         const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
-        return local.toISOString().slice(0, 10);
+        return local.toISOString().slice(0, 16);
       }
 
-      function toDateInputValue(dateLike) {
+      function toDateTimeLocalValue(dateLike) {
         const date = new Date(dateLike);
         if (Number.isNaN(date.getTime())) return '';
         const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
-        return local.toISOString().slice(0, 10);
+        return local.toISOString().slice(0, 16);
       }
 
       function getAdminHeaders(headers = {}) {
@@ -271,7 +272,7 @@
         if (shouldResetFields) {
           form.reset();
           document.getElementById('nominal_infaq').value = '0';
-          document.getElementById('tanggal_transaksi').value = getTodayDateInputValue();
+          document.getElementById('waktu_transaksi').value = getNowDateTimeLocalValue();
         }
         setFormMode('create');
       }
@@ -280,7 +281,7 @@
         currentEditId = item.id;
         document.getElementById('nama_kk').value = item.nama_kk;
         document.getElementById('alamat_muzaqi').value = item.alamat_muzaqi || '';
-        document.getElementById('tanggal_transaksi').value = toDateInputValue(item.created_at) || getTodayDateInputValue();
+        document.getElementById('waktu_transaksi').value = toDateTimeLocalValue(item.created_at) || getNowDateTimeLocalValue();
         document.getElementById('jumlah_jiwa').value = item.jumlah_jiwa;
         document.getElementById('jenis_bayar').value = item.jenis_bayar;
         document.getElementById('nominal_infaq').value = item.nominal_infaq;
@@ -803,7 +804,7 @@
         const payload = {
           nama_kk: document.getElementById('nama_kk').value.trim(),
           alamat_muzaqi: document.getElementById('alamat_muzaqi').value.trim(),
-          tanggal_transaksi: document.getElementById('tanggal_transaksi').value,
+          waktu_transaksi: document.getElementById('waktu_transaksi').value,
           jumlah_jiwa: Number(document.getElementById('jumlah_jiwa').value),
           jenis_bayar: document.getElementById('jenis_bayar').value,
           nominal_infaq: document.getElementById('nominal_infaq').value,
@@ -841,7 +842,7 @@
         setTimeout(() => {
           resetFormState(false);
           document.getElementById('nominal_infaq').value = '0';
-          document.getElementById('tanggal_transaksi').value = getTodayDateInputValue();
+          document.getElementById('waktu_transaksi').value = getNowDateTimeLocalValue();
           formMessage.textContent = '';
         }, 0);
       });
@@ -975,9 +976,9 @@
       }
 
       if (adminKey) {
-        const dateInput = document.getElementById('tanggal_transaksi');
-        if (dateInput && !dateInput.value) {
-          dateInput.value = getTodayDateInputValue();
+        const dateTimeInput = document.getElementById('waktu_transaksi');
+        if (dateTimeInput && !dateTimeInput.value) {
+          dateTimeInput.value = getNowDateTimeLocalValue();
         }
       }
 
