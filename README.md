@@ -43,6 +43,8 @@ Project ini sengaja dibuat sederhana untuk kebutuhan cepat:
 
 ## Setup Lokal
 
+> Catatan: dependency saat ini (Express 5) butuh Node.js >= 18.
+
 1. Install dependency:
 
 ```bash
@@ -91,11 +93,14 @@ Endpoint publik hanya read-only untuk kebutuhan halaman monitor warga.
 {
   "nama_kk": "Bapak Ahmad",
   "alamat_muzaqi": "Jl. Melati No. 10",
+  "tanggal_transaksi": "2026-03-15",
   "jumlah_jiwa": 4,
   "jenis_bayar": "Uang",
   "nominal_infaq": 50000
 }
 ```
+
+Field `tanggal_transaksi` bersifat opsional (format `YYYY-MM-DD`). Jika diisi, sistem akan menyimpan transaksi pada tanggal tersebut (berguna untuk input manual ketika pencatatan dilakukan offline).
 
 ## Catatan Upload ke GitHub
 

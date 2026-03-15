@@ -221,7 +221,7 @@ app.get('/api/transaksi', requireAdminApi, async (req, res) => {
 
 app.post('/api/transaksi', requireAdminApi, async (req, res) => {
   try {
-    const { nama_kk, alamat_muzaqi, jumlah_jiwa, jenis_bayar, nominal_infaq } = req.body;
+    const { nama_kk, alamat_muzaqi, tanggal_transaksi, jumlah_jiwa, jenis_bayar, nominal_infaq } = req.body;
 
     if (!nama_kk || typeof nama_kk !== 'string') {
       return res.status(400).json({ message: 'nama_kk wajib diisi.' });
@@ -245,15 +245,28 @@ app.post('/api/transaksi', requireAdminApi, async (req, res) => {
       return res.status(400).json({ message: 'nominal_infaq harus angka >= 0.' });
     }
 
+    const tanggalTransaksi = tanggal_transaksi === undefined || tanggal_transaksi === '' ? null : String(tanggal_transaksi);
+    if (tanggalTransaksi && !isValidDateString(tanggalTransaksi)) {
+      return res.status(400).json({ message: 'tanggal_transaksi tidak valid. Gunakan format YYYY-MM-DD.' });
+    }
+
     const nominalZakat = hitungNominalZakat(jumlahJiwaNum, jenis_bayar);
 
     const insertQuery = `
-      INSERT INTO transaksi_zis (nama_kk, alamat_muzaqi, jumlah_jiwa, jenis_bayar, nominal_zakat, nominal_infaq)
-      VALUES ($1, $2, $3, $4, $5, $6)
+      INSERT INTO transaksi_zis (nama_kk, alamat_muzaqi, jumlah_jiwa, jenis_bayar, nominal_zakat, nominal_infaq, created_at)
+      VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7::date::timestamp, CURRENT_TIMESTAMP))
       RETURNING id, nama_kk, alamat_muzaqi, jumlah_jiwa, jenis_bayar, nominal_zakat, nominal_infaq, created_at
     `;
 
-    const values = [nama_kk.trim(), alamat_muzaqi.trim(), jumlahJiwaNum, jenis_bayar, nominalZakat, infaqNum];
+    const values = [
+      nama_kk.trim(),
+      alamat_muzaqi.trim(),
+      jumlahJiwaNum,
+      jenis_bayar,
+      nominalZakat,
+      infaqNum,
+      tanggalTransaksi,
+    ];
     const { rows } = await pool.query(insertQuery, values);
 
     res.status(201).json(rows[0]);
@@ -270,7 +283,7 @@ app.put('/api/transaksi/:id', requireAdminApi, async (req, res) => {
       return res.status(400).json({ message: 'id tidak valid.' });
     }
 
-    const { nama_kk, alamat_muzaqi, jumlah_jiwa, jenis_bayar, nominal_infaq } = req.body;
+    const { nama_kk, alamat_muzaqi, tanggal_transaksi, jumlah_jiwa, jenis_bayar, nominal_infaq } = req.body;
 
     if (!nama_kk || typeof nama_kk !== 'string') {
       return res.status(400).json({ message: 'nama_kk wajib diisi.' });
@@ -294,6 +307,11 @@ app.put('/api/transaksi/:id', requireAdminApi, async (req, res) => {
       return res.status(400).json({ message: 'nominal_infaq harus angka >= 0.' });
     }
 
+    const tanggalTransaksi = tanggal_transaksi === undefined || tanggal_transaksi === '' ? null : String(tanggal_transaksi);
+    if (tanggalTransaksi && !isValidDateString(tanggalTransaksi)) {
+      return res.status(400).json({ message: 'tanggal_transaksi tidak valid. Gunakan format YYYY-MM-DD.' });
+    }
+
     const nominalZakat = hitungNominalZakat(jumlahJiwaNum, jenis_bayar);
 
     const updateQuery = `
@@ -303,12 +321,22 @@ app.put('/api/transaksi/:id', requireAdminApi, async (req, res) => {
           jumlah_jiwa = $3,
           jenis_bayar = $4,
           nominal_zakat = $5,
-          nominal_infaq = $6
-      WHERE id = $7
+          nominal_infaq = $6,
+          created_at = COALESCE($7::date::timestamp, created_at)
+      WHERE id = $8
       RETURNING id, nama_kk, alamat_muzaqi, jumlah_jiwa, jenis_bayar, nominal_zakat, nominal_infaq, created_at
     `;
 
-    const values = [nama_kk.trim(), alamat_muzaqi.trim(), jumlahJiwaNum, jenis_bayar, nominalZakat, infaqNum, id];
+    const values = [
+      nama_kk.trim(),
+      alamat_muzaqi.trim(),
+      jumlahJiwaNum,
+      jenis_bayar,
+      nominalZakat,
+      infaqNum,
+      tanggalTransaksi,
+      id,
+    ];
     const { rows, rowCount } = await pool.query(updateQuery, values);
 
     if (rowCount === 0) {
