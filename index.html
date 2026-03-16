@@ -613,6 +613,8 @@
           0,
         );
 
+        const totalInfaq = transaksiFilteredCache.reduce((acc, item) => acc + Number(item.nominal_infaq || 0), 0);
+
         const rowsHtml = transaksiFilteredCache
           .map((item, index) => {
             const nominalZakat =
@@ -627,6 +629,7 @@
                 <td>${item.jumlah_jiwa}</td>
                 <td>${item.jenis_bayar}</td>
                 <td>${nominalZakat}</td>
+                <td>${formatRupiah(item.nominal_infaq)}</td>
               </tr>
             `;
           })
@@ -664,6 +667,7 @@
                 <p>Total Jiwa: <strong>${formatAngka(totalJiwa)}</strong></p>
                 <p>Total Beras: <strong>${formatAngka(totalBeras)} kg</strong></p>
                 <p>Total Uang Zakat: <strong>${formatRupiah(totalUangZakat)}</strong></p>
+                <p>Total Infaq: <strong>${formatRupiah(totalInfaq)}</strong></p>
               </div>
               <table>
                 <thead>
@@ -674,6 +678,7 @@
                     <th>Jiwa</th>
                     <th>Jenis</th>
                     <th>Nominal Zakat</th>
+                    <th>Infaq</th>
                   </tr>
                 </thead>
                 <tbody>
