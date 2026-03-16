@@ -131,9 +131,27 @@ function requireAdminPage(req, res, next) {
 
   const token = extractAdminToken(req);
   if (token !== ADMIN_TOKEN) {
-    return res
-      .status(403)
-      .send('Akses admin ditolak. Gunakan link admin dengan token valid, contoh: /?key=TOKEN_ANDA');
+    return res.status(403).type('html').send(`
+      <!doctype html>
+      <html lang="id">
+        <head>
+          <meta charset="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+          <meta http-equiv="refresh" content="5;url=/monitor.html" />
+          <title>Akses Ditolak</title>
+        </head>
+        <body>
+          <p>Akses admin ditolak. Gunakan link admin dengan token valid, contoh: /?key=TOKEN_ANDA</p>
+          <p>Anda akan dialihkan ke halaman monitor dalam 5 detik...</p>
+          <p><a href="/monitor.html">Klik di sini jika tidak otomatis</a></p>
+          <script>
+            setTimeout(function () {
+              window.location.href = '/monitor.html';
+            }, 5000);
+          </script>
+        </body>
+      </html>
+    `);
   }
 
   next();
@@ -425,7 +443,7 @@ app.get('/api/public/rekap', async (req, res) => {
 
     const data = await queryRekapByDate(dateRange.startDate, dateRange.endDate);
 
-    const totalDanaDistribusi = Number(data.total_uang_zakat) + Number(data.total_infaq);
+    const totalDanaDistribusi = Number(data.total_uang_zakat);
     const totalBerasDistribusi = Number(data.total_beras);
 
     const distribusi = {
@@ -466,7 +484,7 @@ app.get('/api/rekap', requireAdminApi, async (req, res) => {
 
     const data = await queryRekapByDate(dateRange.startDate, dateRange.endDate);
 
-    const totalDanaDistribusi = Number(data.total_uang_zakat) + Number(data.total_infaq);
+    const totalDanaDistribusi = Number(data.total_uang_zakat);
     const totalBerasDistribusi = Number(data.total_beras);
 
     const distribusi = {
