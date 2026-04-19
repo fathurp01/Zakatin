@@ -1,0 +1,180 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  RW
+  PENGURUS_MASJID
+}
+
+enum StatusAkun {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum JenisTransaksi {
+  MASUK
+  KELUAR
+}
+
+enum StatusIuran {
+  LUNAS
+  BELUM
+}
+
+enum JenisBayar {
+  UANG
+  BERAS
+}
+
+model User {
+  id               String           @id @default(uuid())
+  nama             String
+  email            String           @unique
+  password         String
+  no_hp            String
+  blok_wilayah_id  String?
+  role             Role
+  status_akun      StatusAkun       @default(PENDING)
+  alasan_penolakan String?          @db.Text
+  created_at       DateTime         @default(now())
+  
+  blok_wilayah     BlokWilayah?     @relation(fields: [blok_wilayah_id], references: [id])
+  wilayah_rw       WilayahRW?
+  pengurus_masjid  PengurusMasjid[]
+
+  @@map("users")
+}
+
+model WilayahRW {
+  id            String        @id @default(uuid())
+  user_id       String        @unique
+  nama_kompleks String
+  no_rw         String
+  
+  user          User          @relation(fields: [user_id], references: [id])
+  blok_wilayah  BlokWilayah[]
+  kas_rw        KasRW[]
+
+  @@map("wilayah_rw")
+}
+
+model BlokWilayah {
+  id            String      @id @default(uuid())
+  wilayah_rw_id String
+  nama_blok     String
+  no_rt         String?
+  
+  wilayah_rw    WilayahRW   @relation(fields: [wilayah_rw_id], references: [id])
+  masjid        Masjid[]
+  users         User[]
+  warga         Warga[]
+
+  @@map("blok_wilayah")
+}
+
+model Masjid {
+  id              String           @id @default(uuid())
+  blok_wilayah_id String
+  nama_masjid     String
+  alamat          String           @db.Text
+  
+  blok_wilayah    BlokWilayah      @relation(fields: [blok_wilayah_id], references: [id])
+  pengurus_masjid PengurusMasjid[]
+  transaksi_zis   TransaksiZis[]
+  pengaturan_zis  PengaturanZis?
+
+  @@map("masjid")
+}
+
+model PengurusMasjid {
+  id        String @id @default(uuid())
+  user_id   String
+  masjid_id String
+  
+  user      User   @relation(fields: [user_id], references: [id])
+  masjid    Masjid @relation(fields: [masjid_id], references: [id])
+
+  @@map("pengurus_masjid")
+}
+
+model Warga {
+  id                  String       @id @default(uuid())
+  blok_wilayah_id     String
+  nama_kk             String
+  tarif_iuran_bulanan Decimal      @db.Decimal(10, 2)
+  
+  blok_wilayah        BlokWilayah  @relation(fields: [blok_wilayah_id], references: [id])
+  iuran_warga         IuranWarga[]
+
+  @@map("warga")
+}
+
+model IuranWarga {
+  id            String      @id @default(uuid())
+  warga_id      String
+  bulan         Int
+  tahun         Int
+  nominal       Decimal     @db.Decimal(10, 2)
+  status        StatusIuran @default(BELUM)
+  kode_unik     String?     @unique
+  tanggal_bayar DateTime?
+  
+  warga         Warga       @relation(fields: [warga_id], references: [id])
+
+  @@map("iuran_warga")
+}
+
+model KasRW {
+  id              String         @id @default(uuid())
+  wilayah_rw_id   String
+  jenis_transaksi JenisTransaksi
+  tanggal         DateTime       @default(now())
+  keterangan      String         @db.Text
+  nominal         Decimal        @db.Decimal(10, 2)
+  bukti_url       String?
+  kode_unik       String         @unique
+  
+  wilayah_rw      WilayahRW      @relation(fields: [wilayah_rw_id], references: [id])
+
+  @@map("kas_rw")
+}
+
+model TransaksiZis {
+  id               String     @id @default(uuid())
+  masjid_id        String
+  kode_unik        String     @unique
+  nama_kk          String
+  alamat_muzaqi    String
+  jumlah_jiwa      Int
+  jenis_bayar      JenisBayar
+  nominal_zakat    Decimal    @default(0) @db.Decimal(10, 2)
+  nominal_infaq    Decimal    @default(0) @db.Decimal(10, 2)
+  total_beras_kg   Decimal    @default(0) @db.Decimal(10, 2)
+  waktu_transaksi  DateTime   @default(now())
+  
+  masjid           Masjid     @relation(fields: [masjid_id], references: [id])
+
+  @@map("transaksi_zis")
+}
+
+model PengaturanZis {
+  id                  String  @id @default(uuid())
+  masjid_id           String  @unique
+  persen_fakir        Float   @default(62.5)
+  persen_amil         Float   @default(8.0)
+  persen_fisabilillah Float   @default(11.0)
+  persen_lainnya      Float   @default(18.5)
+  harga_beras_per_kg  Decimal @db.Decimal(10, 2)
+  is_harga_auto_api   Boolean @default(false)
+  
+  masjid              Masjid  @relation(fields: [masjid_id], references: [id])
+
+  @@map("pengaturan_zis")
+}

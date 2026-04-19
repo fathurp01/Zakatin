@@ -1,0 +1,109 @@
+import { z } from "zod";
+
+const uuidSchema = z.string().uuid();
+
+export const registerSchema = z
+  .object({
+    nama: z.string().trim().min(3).max(120),
+    email: z.string().trim().email().transform((value) => value.toLowerCase()),
+    password: z.string().min(8).max(128),
+    no_hp: z.string().trim().min(8).max(20),
+    role: z.enum(["RW", "PENGURUS_MASJID"]),
+    blok_wilayah_id: uuidSchema.optional(),
+    masjid_id: uuidSchema.optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.role === "PENGURUS_MASJID" && !value.masjid_id) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["masjid_id"],
+        message: "masjid_id wajib diisi untuk role PENGURUS_MASJID.",
+      });
+    }
+  });
+
+export const loginSchema = z.object({
+  email: z.string().trim().email().transform((value) => value.toLowerCase()),
+  password: z.string().min(1).max(128),
+});
+
+export const approvePengurusSchema = z
+  .object({
+    user_id: uuidSchema,
+    status_akun: z.enum(["APPROVED", "REJECTED"]),
+    alasan_penolakan: z.string().trim().max(500).optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.status_akun === "REJECTED" && !value.alasan_penolakan) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["alasan_penolakan"],
+        message: "alasan_penolakan wajib diisi saat menolak pengurus.",
+      });
+    }
+  });
+
+export const createWargaSchema = z.object({
+  blok_wilayah_id: uuidSchema,
+  nama_kk: z.string().trim().min(2).max(150),
+  tarif_iuran_bulanan: z.coerce.number().positive(),
+});
+
+export const getIuranWargaQuerySchema = z.object({
+  blok_wilayah_id: uuidSchema,
+  tahun: z.coerce.number().int().min(2000).max(3000).optional(),
+});
+
+export const bayarIuranSchema = z.object({
+  iuran_id: uuidSchema,
+});
+
+export const createKasRWSchema = z.object({
+  wilayah_rw_id: uuidSchema,
+  jenis_transaksi: z.enum(["MASUK", "KELUAR"]),
+  tanggal: z.string().datetime().optional(),
+  keterangan: z.string().trim().min(1).max(5000),
+  nominal: z.coerce.number().positive(),
+  bukti_url: z.string().trim().url().optional(),
+});
+
+export const createTransaksiZisSchema = z
+  .object({
+    masjid_id: uuidSchema,
+    nama_kk: z.string().trim().min(2).max(150),
+    alamat_muzaqi: z.string().trim().min(3).max(1000),
+    jumlah_jiwa: z.coerce.number().int().positive(),
+    jenis_bayar: z.enum(["UANG", "BERAS"]),
+    nominal_zakat: z.coerce.number().min(0).optional(),
+    nominal_infaq: z.coerce.number().min(0).optional(),
+    total_beras_kg: z.coerce.number().min(0).optional(),
+  })
+  .superRefine((value, ctx) => {
+    const nominalZakat = value.nominal_zakat ?? 0;
+    const nominalInfaq = value.nominal_infaq ?? 0;
+    const totalBeras = value.total_beras_kg ?? 0;
+
+    if (value.jenis_bayar === "UANG" && nominalZakat + nominalInfaq <= 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["nominal_zakat"],
+        message: "Untuk jenis UANG, nominal_zakat atau nominal_infaq harus lebih dari 0.",
+      });
+    }
+
+    if (value.jenis_bayar === "BERAS" && totalBeras <= 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["total_beras_kg"],
+        message: "Untuk jenis BERAS, total_beras_kg harus lebih dari 0.",
+      });
+    }
+  });
+
+export const getDashboardZisQuerySchema = z.object({
+  masjid_id: uuidSchema.optional(),
+});
+
+export const cekKodeUnikParamsSchema = z.object({
+  kode_unik: z.string().trim().min(1).max(100),
+});
