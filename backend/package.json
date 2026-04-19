@@ -4,6 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "dev": "npx tsx watch src/server.ts",
+    "start": "node dist/server.js",
     "build": "tsc -p tsconfig.json",
     "test": "jest --runInBand",
     "test:watch": "jest --watch",

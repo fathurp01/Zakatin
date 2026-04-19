@@ -11,12 +11,14 @@ jest.mock("../src/lib/prisma", () => {
     };
     wilayahRW: {
       findUnique: jest.Mock;
+      findMany: jest.Mock;
     };
     blokWilayah: {
       findUnique: jest.Mock;
     };
     masjid: {
       findUnique: jest.Mock;
+      findMany: jest.Mock;
     };
     pengurusMasjid: {
       findFirst: jest.Mock;
@@ -54,12 +56,14 @@ jest.mock("../src/lib/prisma", () => {
     },
     wilayahRW: {
       findUnique: jest.fn(),
+      findMany: jest.fn(),
     },
     blokWilayah: {
       findUnique: jest.fn(),
     },
     masjid: {
       findUnique: jest.fn(),
+      findMany: jest.fn(),
     },
     pengurusMasjid: {
       findFirst: jest.fn(),
@@ -101,9 +105,9 @@ import { prisma } from "../src/lib/prisma";
 
 type MockedPrisma = {
   user: { findUnique: jest.Mock; create: jest.Mock; update: jest.Mock };
-  wilayahRW: { findUnique: jest.Mock };
+  wilayahRW: { findUnique: jest.Mock; findMany: jest.Mock };
   blokWilayah: { findUnique: jest.Mock };
-  masjid: { findUnique: jest.Mock };
+  masjid: { findUnique: jest.Mock; findMany: jest.Mock };
   pengurusMasjid: { findFirst: jest.Mock; findMany: jest.Mock };
   warga: { create: jest.Mock; findMany: jest.Mock };
   iuranWarga: { createMany: jest.Mock; findUnique: jest.Mock; update: jest.Mock };
@@ -138,8 +142,10 @@ const resetMocks = () => {
   if (mockedPrisma.user?.create?.mockClear) mockedPrisma.user.create.mockClear();
   if (mockedPrisma.user?.update?.mockClear) mockedPrisma.user.update.mockClear();
   if (mockedPrisma.wilayahRW?.findUnique?.mockClear) mockedPrisma.wilayahRW.findUnique.mockClear();
+  if (mockedPrisma.wilayahRW?.findMany?.mockClear) mockedPrisma.wilayahRW.findMany.mockClear();
   if (mockedPrisma.blokWilayah?.findUnique?.mockClear) mockedPrisma.blokWilayah.findUnique.mockClear();
   if (mockedPrisma.masjid?.findUnique?.mockClear) mockedPrisma.masjid.findUnique.mockClear();
+  if (mockedPrisma.masjid?.findMany?.mockClear) mockedPrisma.masjid.findMany.mockClear();
   if (mockedPrisma.pengurusMasjid?.findFirst?.mockClear) mockedPrisma.pengurusMasjid.findFirst.mockClear();
   if (mockedPrisma.pengurusMasjid?.findMany?.mockClear) mockedPrisma.pengurusMasjid.findMany.mockClear();
   if (mockedPrisma.iuranWarga?.findUnique?.mockClear) mockedPrisma.iuranWarga.findUnique.mockClear();
@@ -412,5 +418,49 @@ describe("Backend security suite", () => {
     const response = await request(app).get("/api/public/cek-kode/NONEXISTENT");
 
     expect(response.status).toBe(404);
+  });
+
+  it("returns public masjid list for register flow", async () => {
+    mockedPrisma.wilayahRW.findMany.mockResolvedValueOnce([
+      {
+        id: rwWilayahId,
+        nama_kompleks: "Kompleks Melati",
+        no_rw: "05",
+      },
+    ]);
+
+    mockedPrisma.masjid.findMany.mockResolvedValueOnce([
+      {
+        id: masjidId,
+        nama_masjid: "Masjid Al-Huda",
+        alamat: "Jl. Melati 1",
+        blok_wilayah_id: blokWilayahId,
+        blok_wilayah: {
+          id: blokWilayahId,
+          nama_blok: "Blok A",
+          wilayah_rw: {
+            id: rwWilayahId,
+            nama_kompleks: "Kompleks Melati",
+            no_rw: "05",
+          },
+        },
+      },
+    ]);
+
+    const response = await request(app).get("/api/public/masjid-list");
+
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(true);
+    expect(response.body.data.wilayah_rw).toHaveLength(1);
+    expect(response.body.data.masjid).toHaveLength(1);
+    expect(response.body.data.masjid[0].id).toBe(masjidId);
+  });
+
+  it("rejects invalid masjid-list query", async () => {
+    const response = await request(app)
+      .get("/api/public/masjid-list")
+      .query({ search: "a".repeat(101) });
+
+    expect(response.status).toBe(400);
   });
 });

@@ -104,6 +104,10 @@ export const getDashboardZisQuerySchema = z.object({
   masjid_id: uuidSchema.optional(),
 });
 
+export const masjidListQuerySchema = z.object({
+  search: z.string().trim().min(1).max(100).optional(),
+});
+
 export const cekKodeUnikParamsSchema = z.object({
   kode_unik: z.string().trim().min(1).max(100),
 });

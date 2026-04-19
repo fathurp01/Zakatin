@@ -10,7 +10,7 @@ import {
   createTransaksiZis,
   getDashboardZis,
 } from "../controllers/zisController";
-import { cekKodeUnik } from "../controllers/publicController";
+import { cekKodeUnik, getMasjidList } from "../controllers/publicController";
 import {
   checkApproval,
   checkRole,
@@ -37,6 +37,7 @@ import {
   getDashboardZisQuerySchema,
   getIuranWargaQuerySchema,
   loginSchema,
+  masjidListQuerySchema,
   registerSchema,
 } from "../validation/schemas";
 
@@ -108,6 +109,13 @@ router.get(
   checkApproval,
   validateQuery(getDashboardZisQuerySchema),
   getDashboardZis
+);
+
+router.get(
+  "/public/masjid-list",
+  publicRateLimit,
+  validateQuery(masjidListQuerySchema),
+  getMasjidList
 );
 
 router.get(

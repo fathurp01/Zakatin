@@ -10,6 +10,19 @@ const formatIssues = (
   }));
 };
 
+const replaceObjectValues = (
+  target: Record<string, unknown>,
+  source: Record<string, unknown>
+) => {
+  Object.keys(target).forEach((key) => {
+    delete target[key];
+  });
+
+  Object.entries(source).forEach(([key, value]) => {
+    target[key] = value;
+  });
+};
+
 export const validateBody = (schema: ZodTypeAny) => {
   return (req: Request, res: Response, next: NextFunction): void => {
     const parsed = schema.safeParse(req.body);
@@ -41,7 +54,10 @@ export const validateQuery = (schema: ZodTypeAny) => {
       return;
     }
 
-    req.query = parsed.data as Request["query"];
+    replaceObjectValues(
+      req.query as unknown as Record<string, unknown>,
+      parsed.data as Record<string, unknown>
+    );
     next();
   };
 };
@@ -59,7 +75,10 @@ export const validateParams = (schema: ZodTypeAny) => {
       return;
     }
 
-    req.params = parsed.data as Request["params"];
+    replaceObjectValues(
+      req.params as unknown as Record<string, unknown>,
+      parsed.data as Record<string, unknown>
+    );
     next();
   };
 };
