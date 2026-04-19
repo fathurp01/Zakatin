@@ -26,6 +26,10 @@ interface ApprovePengurusBody {
   alasan_penolakan?: string;
 }
 
+interface PendingPengurusQuery {
+  search?: string;
+}
+
 interface TokenPayload extends Pick<User, "id" | "email" | "role"> {
   wilayah_rw_id?: string;
   masjid_ids?: string[];
@@ -449,4 +453,145 @@ export const approvePengurus = async (
   res: Response
 ): Promise<void> => {
   return approvePengurusWithClient(prisma, req, res);
+};
+
+export const listPendingPengurusWithClient = async (
+  client: typeof prisma,
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    if (!req.user || req.user.role !== Role.RW) {
+      res.status(403).json({
+        success: false,
+        message: "Hanya role RW yang boleh melihat daftar pending pengurus.",
+      });
+      return;
+    }
+
+    const { search } = req.query as PendingPengurusQuery;
+    const normalizedSearch = search?.trim();
+
+    const rwWilayah = await client.wilayahRW.findUnique({
+      where: { user_id: req.user.id },
+      select: { id: true },
+    });
+
+    if (!rwWilayah) {
+      res.status(403).json({
+        success: false,
+        message: "Data wilayah RW untuk user login tidak ditemukan.",
+      });
+      return;
+    }
+
+    const pendingPengurus = await client.pengurusMasjid.findMany({
+      where: {
+        masjid: {
+          blok_wilayah: {
+            wilayah_rw_id: rwWilayah.id,
+          },
+        },
+        user: {
+          status_akun: StatusAkun.PENDING,
+          ...(normalizedSearch
+            ? {
+                OR: [
+                  {
+                    nama: {
+                      contains: normalizedSearch,
+                      mode: "insensitive",
+                    },
+                  },
+                  {
+                    email: {
+                      contains: normalizedSearch,
+                      mode: "insensitive",
+                    },
+                  },
+                  {
+                    no_hp: {
+                      contains: normalizedSearch,
+                      mode: "insensitive",
+                    },
+                  },
+                ],
+              }
+            : {}),
+        },
+      },
+      select: {
+        user: {
+          select: {
+            id: true,
+            nama: true,
+            email: true,
+            no_hp: true,
+            role: true,
+            status_akun: true,
+            created_at: true,
+          },
+        },
+        masjid: {
+          select: {
+            id: true,
+            nama_masjid: true,
+            alamat: true,
+            blok_wilayah: {
+              select: {
+                nama_blok: true,
+                wilayah_rw: {
+                  select: {
+                    id: true,
+                    nama_kompleks: true,
+                    no_rw: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      orderBy: {
+        user: {
+          created_at: "asc",
+        },
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Daftar pengurus masjid pending berhasil diambil.",
+      data: pendingPengurus.map((item) => ({
+        user_id: item.user.id,
+        nama: item.user.nama,
+        email: item.user.email,
+        no_hp: item.user.no_hp,
+        role: item.user.role,
+        status_akun: item.user.status_akun,
+        created_at: item.user.created_at,
+        masjid: {
+          id: item.masjid.id,
+          nama_masjid: item.masjid.nama_masjid,
+          alamat: item.masjid.alamat,
+          nama_blok: item.masjid.blok_wilayah.nama_blok,
+          wilayah_rw_id: item.masjid.blok_wilayah.wilayah_rw.id,
+          nama_kompleks: item.masjid.blok_wilayah.wilayah_rw.nama_kompleks,
+          no_rw: item.masjid.blok_wilayah.wilayah_rw.no_rw,
+        },
+      })),
+    });
+  } catch {
+    res.status(500).json({
+      success: false,
+      message: "Terjadi kesalahan saat mengambil daftar pending pengurus.",
+    });
+  }
+};
+
+export const listPendingPengurus = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  return listPendingPengurusWithClient(prisma, req, res);
 };

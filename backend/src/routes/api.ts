@@ -1,10 +1,18 @@
 import { Router } from "express";
-import { approvePengurus, login, register } from "../controllers/authController";
+import {
+  approvePengurus,
+  listPendingPengurus,
+  login,
+  register,
+} from "../controllers/authController";
 import {
   bayarIuran,
   createKasRW,
   createWarga,
+  deleteKasRW,
+  getKasRW,
   getIuranWarga,
+  updateKasRW,
 } from "../controllers/rwController";
 import {
   createTransaksiZis,
@@ -31,14 +39,19 @@ import {
   approvePengurusSchema,
   bayarIuranSchema,
   cekKodeUnikParamsSchema,
+  cekKodeUnikQuerySchema,
   createKasRWSchema,
   createTransaksiZisSchema,
   createWargaSchema,
   getDashboardZisQuerySchema,
   getIuranWargaQuerySchema,
+  getKasRWQuerySchema,
+  kasRWParamsSchema,
+  listPendingPengurusQuerySchema,
   loginSchema,
   masjidListQuerySchema,
   registerSchema,
+  updateKasRWSchema,
 } from "../validation/schemas";
 
 const router = Router();
@@ -53,6 +66,15 @@ router.patch(
   checkApproval,
   validateBody(approvePengurusSchema),
   approvePengurus
+);
+router.get(
+  "/auth/pending-pengurus",
+  authRateLimit,
+  verifyToken,
+  checkRole(["RW"]),
+  checkApproval,
+  validateQuery(listPendingPengurusQuerySchema),
+  listPendingPengurus
 );
 
 router.post(
@@ -91,6 +113,34 @@ router.post(
   validateBody(createKasRWSchema),
   createKasRW
 );
+router.get(
+  "/rw/kas",
+  rwActionRateLimit,
+  verifyToken,
+  checkRole(["RW"]),
+  checkApproval,
+  validateQuery(getKasRWQuerySchema),
+  getKasRW
+);
+router.patch(
+  "/rw/kas/:kas_id",
+  rwActionRateLimit,
+  verifyToken,
+  checkRole(["RW"]),
+  checkApproval,
+  validateParams(kasRWParamsSchema),
+  validateBody(updateKasRWSchema),
+  updateKasRW
+);
+router.delete(
+  "/rw/kas/:kas_id",
+  rwActionRateLimit,
+  verifyToken,
+  checkRole(["RW"]),
+  checkApproval,
+  validateParams(kasRWParamsSchema),
+  deleteKasRW
+);
 
 router.post(
   "/zis/transaksi",
@@ -122,6 +172,7 @@ router.get(
   "/public/cek-kode/:kode_unik",
   publicRateLimit,
   validateParams(cekKodeUnikParamsSchema),
+  validateQuery(cekKodeUnikQuerySchema),
   cekKodeUnik
 );
 

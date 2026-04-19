@@ -43,6 +43,10 @@ export const approvePengurusSchema = z
     }
   });
 
+export const listPendingPengurusQuerySchema = z.object({
+  search: z.string().trim().min(1).max(100).optional(),
+});
+
 export const createWargaSchema = z.object({
   blok_wilayah_id: uuidSchema,
   nama_kk: z.string().trim().min(2).max(150),
@@ -66,6 +70,28 @@ export const createKasRWSchema = z.object({
   nominal: z.coerce.number().positive(),
   bukti_url: z.string().trim().url().optional(),
 });
+
+export const getKasRWQuerySchema = z.object({
+  wilayah_rw_id: uuidSchema,
+  jenis_transaksi: z.enum(["MASUK", "KELUAR"]).optional(),
+  search: z.string().trim().min(1).max(100).optional(),
+});
+
+export const kasRWParamsSchema = z.object({
+  kas_id: uuidSchema,
+});
+
+export const updateKasRWSchema = z
+  .object({
+    jenis_transaksi: z.enum(["MASUK", "KELUAR"]).optional(),
+    tanggal: z.string().datetime().optional(),
+    keterangan: z.string().trim().min(1).max(5000).optional(),
+    nominal: z.coerce.number().positive().optional(),
+    bukti_url: z.string().trim().url().optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "Minimal satu field harus dikirim untuk update.",
+  });
 
 export const createTransaksiZisSchema = z
   .object({
@@ -110,4 +136,8 @@ export const masjidListQuerySchema = z.object({
 
 export const cekKodeUnikParamsSchema = z.object({
   kode_unik: z.string().trim().min(1).max(100),
+});
+
+export const cekKodeUnikQuerySchema = z.object({
+  scope: z.enum(["RW", "MASJID"]).optional(),
 });

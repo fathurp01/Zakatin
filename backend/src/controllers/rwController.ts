@@ -27,6 +27,24 @@ interface CreateKasRWBody {
   bukti_url?: string;
 }
 
+interface GetKasRWQuery {
+  wilayah_rw_id?: string;
+  jenis_transaksi?: JenisTransaksi;
+  search?: string;
+}
+
+interface KasIdParams {
+  kas_id?: string;
+}
+
+interface UpdateKasRWBody {
+  jenis_transaksi?: JenisTransaksi;
+  tanggal?: string;
+  keterangan?: string;
+  nominal?: number | string;
+  bukti_url?: string;
+}
+
 const generateKodeUnik = (prefix: "IUR" | "KAS"): string => {
   const year = new Date().getFullYear();
   const uuid = randomUUID().toUpperCase();
@@ -501,6 +519,342 @@ export const createKasRW = async (req: Request, res: Response): Promise<void> =>
     res.status(500).json({
       success: false,
       message: "Terjadi kesalahan saat menambahkan kas RW.",
+    });
+  }
+};
+
+export const getKasRW = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { wilayah_rw_id, jenis_transaksi, search } = req.query as GetKasRWQuery;
+
+    if (!wilayah_rw_id) {
+      res.status(400).json({
+        success: false,
+        message: "wilayah_rw_id wajib diisi pada query parameter.",
+      });
+      return;
+    }
+
+    if (!req.user?.id) {
+      res.status(401).json({
+        success: false,
+        message: "User belum terautentikasi.",
+      });
+      return;
+    }
+
+    const wilayah = await prisma.wilayahRW.findUnique({
+      where: { id: wilayah_rw_id },
+      select: { id: true, user_id: true },
+    });
+
+    if (!wilayah) {
+      res.status(404).json({
+        success: false,
+        message: "Wilayah RW tidak ditemukan.",
+      });
+      return;
+    }
+
+    if (wilayah.user_id !== req.user.id) {
+      res.status(403).json({
+        success: false,
+        message: "Akses ditolak. Anda hanya dapat melihat kas di wilayah RW Anda.",
+      });
+      return;
+    }
+
+    const normalizedSearch = search?.trim();
+
+    const kasList = await prisma.kasRW.findMany({
+      where: {
+        wilayah_rw_id,
+        ...(jenis_transaksi
+          ? {
+              jenis_transaksi,
+            }
+          : {}),
+        ...(normalizedSearch
+          ? {
+              OR: [
+                {
+                  keterangan: {
+                    contains: normalizedSearch,
+                    mode: "insensitive",
+                  },
+                },
+                {
+                  kode_unik: {
+                    contains: normalizedSearch,
+                    mode: "insensitive",
+                  },
+                },
+              ],
+            }
+          : {}),
+      },
+      select: {
+        id: true,
+        wilayah_rw_id: true,
+        jenis_transaksi: true,
+        tanggal: true,
+        keterangan: true,
+        nominal: true,
+        bukti_url: true,
+        kode_unik: true,
+      },
+      orderBy: [{ tanggal: "desc" }, { id: "desc" }],
+    });
+
+    const summary = kasList.reduce(
+      (acc, item) => {
+        const nominal = Number(item.nominal);
+        if (item.jenis_transaksi === JenisTransaksi.MASUK) {
+          acc.total_masuk += nominal;
+        } else {
+          acc.total_keluar += nominal;
+        }
+
+        return acc;
+      },
+      {
+        total_masuk: 0,
+        total_keluar: 0,
+      }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Data kas RW berhasil diambil.",
+      data: {
+        wilayah_rw_id,
+        items: kasList,
+        summary: {
+          total_masuk: summary.total_masuk,
+          total_keluar: summary.total_keluar,
+          saldo: summary.total_masuk - summary.total_keluar,
+        },
+      },
+    });
+  } catch {
+    res.status(500).json({
+      success: false,
+      message: "Terjadi kesalahan saat mengambil data kas RW.",
+    });
+  }
+};
+
+export const updateKasRW = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { kas_id } = req.params as KasIdParams;
+    const { jenis_transaksi, tanggal, keterangan, nominal, bukti_url } =
+      req.body as UpdateKasRWBody;
+
+    if (!kas_id) {
+      res.status(400).json({
+        success: false,
+        message: "kas_id wajib diisi.",
+      });
+      return;
+    }
+
+    if (!req.user?.id) {
+      res.status(401).json({
+        success: false,
+        message: "User belum terautentikasi.",
+      });
+      return;
+    }
+
+    const existingKas = await prisma.kasRW.findUnique({
+      where: { id: kas_id },
+      select: {
+        id: true,
+        wilayah_rw: {
+          select: {
+            user_id: true,
+          },
+        },
+      },
+    });
+
+    if (!existingKas) {
+      res.status(404).json({
+        success: false,
+        message: "Data kas RW tidak ditemukan.",
+      });
+      return;
+    }
+
+    if (existingKas.wilayah_rw.user_id !== req.user.id) {
+      res.status(403).json({
+        success: false,
+        message: "Akses ditolak. Anda hanya dapat mengubah kas di wilayah RW Anda.",
+      });
+      return;
+    }
+
+    if (
+      jenis_transaksi === undefined &&
+      tanggal === undefined &&
+      keterangan === undefined &&
+      nominal === undefined &&
+      bukti_url === undefined
+    ) {
+      res.status(400).json({
+        success: false,
+        message: "Minimal satu field harus dikirim untuk update.",
+      });
+      return;
+    }
+
+    const dataToUpdate: {
+      jenis_transaksi?: JenisTransaksi;
+      tanggal?: Date;
+      keterangan?: string;
+      nominal?: Prisma.Decimal;
+      bukti_url?: string | null;
+    } = {};
+
+    if (jenis_transaksi !== undefined) {
+      if (
+        jenis_transaksi !== JenisTransaksi.MASUK &&
+        jenis_transaksi !== JenisTransaksi.KELUAR
+      ) {
+        res.status(400).json({
+          success: false,
+          message: "jenis_transaksi hanya boleh MASUK atau KELUAR.",
+        });
+        return;
+      }
+      dataToUpdate.jenis_transaksi = jenis_transaksi;
+    }
+
+    if (tanggal !== undefined) {
+      const testDate = new Date(tanggal);
+      if (Number.isNaN(testDate.getTime())) {
+        res.status(400).json({
+          success: false,
+          message: "Format tanggal tidak valid.",
+        });
+        return;
+      }
+      dataToUpdate.tanggal = testDate;
+    }
+
+    if (keterangan !== undefined) {
+      dataToUpdate.keterangan = keterangan.trim();
+    }
+
+    if (nominal !== undefined) {
+      const parsedNominal = parsePositiveNumber(nominal);
+      if (parsedNominal === null) {
+        res.status(400).json({
+          success: false,
+          message: "nominal harus berupa angka lebih dari 0.",
+        });
+        return;
+      }
+      dataToUpdate.nominal = new Prisma.Decimal(parsedNominal);
+    }
+
+    if (bukti_url !== undefined) {
+      dataToUpdate.bukti_url = bukti_url.trim() ? bukti_url : null;
+    }
+
+    const updatedKas = await prisma.kasRW.update({
+      where: { id: kas_id },
+      data: dataToUpdate,
+      select: {
+        id: true,
+        wilayah_rw_id: true,
+        jenis_transaksi: true,
+        tanggal: true,
+        keterangan: true,
+        nominal: true,
+        bukti_url: true,
+        kode_unik: true,
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Data kas RW berhasil diperbarui.",
+      data: updatedKas,
+    });
+  } catch {
+    res.status(500).json({
+      success: false,
+      message: "Terjadi kesalahan saat memperbarui kas RW.",
+    });
+  }
+};
+
+export const deleteKasRW = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { kas_id } = req.params as KasIdParams;
+
+    if (!kas_id) {
+      res.status(400).json({
+        success: false,
+        message: "kas_id wajib diisi.",
+      });
+      return;
+    }
+
+    if (!req.user?.id) {
+      res.status(401).json({
+        success: false,
+        message: "User belum terautentikasi.",
+      });
+      return;
+    }
+
+    const existingKas = await prisma.kasRW.findUnique({
+      where: { id: kas_id },
+      select: {
+        id: true,
+        wilayah_rw: {
+          select: {
+            user_id: true,
+          },
+        },
+      },
+    });
+
+    if (!existingKas) {
+      res.status(404).json({
+        success: false,
+        message: "Data kas RW tidak ditemukan.",
+      });
+      return;
+    }
+
+    if (existingKas.wilayah_rw.user_id !== req.user.id) {
+      res.status(403).json({
+        success: false,
+        message: "Akses ditolak. Anda hanya dapat menghapus kas di wilayah RW Anda.",
+      });
+      return;
+    }
+
+    const deletedKas = await prisma.kasRW.delete({
+      where: { id: kas_id },
+      select: {
+        id: true,
+        kode_unik: true,
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Data kas RW berhasil dihapus.",
+      data: deletedKas,
+    });
+  } catch {
+    res.status(500).json({
+      success: false,
+      message: "Terjadi kesalahan saat menghapus kas RW.",
     });
   }
 };

@@ -5,6 +5,10 @@ interface CekKodeUnikParams {
   kode_unik?: string;
 }
 
+interface CekKodeUnikQuery {
+  scope?: "RW" | "MASJID";
+}
+
 interface GetMasjidListQuery {
   search?: string;
 }
@@ -106,6 +110,7 @@ export const cekKodeUnikWithClient = async (
 ): Promise<void> => {
   try {
     const { kode_unik } = req.params as CekKodeUnikParams;
+    const { scope } = req.query as CekKodeUnikQuery;
 
     if (!kode_unik || !kode_unik.trim()) {
       res.status(400).json({
@@ -117,19 +122,24 @@ export const cekKodeUnikWithClient = async (
 
     const normalizedKode = kode_unik.trim();
 
-    const iuran = await client.iuranWarga.findUnique({
-      where: { kode_unik: normalizedKode },
-      select: {
-        id: true,
-        warga_id: true,
-        bulan: true,
-        tahun: true,
-        nominal: true,
-        status: true,
-        kode_unik: true,
-        tanggal_bayar: true,
-      },
-    });
+    const includeRwScope = scope !== "MASJID";
+    const includeMasjidScope = scope !== "RW";
+
+    const iuran = includeRwScope
+      ? await client.iuranWarga.findUnique({
+          where: { kode_unik: normalizedKode },
+          select: {
+            id: true,
+            warga_id: true,
+            bulan: true,
+            tahun: true,
+            nominal: true,
+            status: true,
+            kode_unik: true,
+            tanggal_bayar: true,
+          },
+        })
+      : null;
 
     if (iuran) {
       res.status(200).json({
@@ -143,19 +153,21 @@ export const cekKodeUnikWithClient = async (
       return;
     }
 
-    const kas = await client.kasRW.findUnique({
-      where: { kode_unik: normalizedKode },
-      select: {
-        id: true,
-        wilayah_rw_id: true,
-        jenis_transaksi: true,
-        tanggal: true,
-        keterangan: true,
-        nominal: true,
-        bukti_url: true,
-        kode_unik: true,
-      },
-    });
+    const kas = includeRwScope
+      ? await client.kasRW.findUnique({
+          where: { kode_unik: normalizedKode },
+          select: {
+            id: true,
+            wilayah_rw_id: true,
+            jenis_transaksi: true,
+            tanggal: true,
+            keterangan: true,
+            nominal: true,
+            bukti_url: true,
+            kode_unik: true,
+          },
+        })
+      : null;
 
     if (kas) {
       res.status(200).json({
@@ -169,22 +181,24 @@ export const cekKodeUnikWithClient = async (
       return;
     }
 
-    const zis = await client.transaksiZis.findUnique({
-      where: { kode_unik: normalizedKode },
-      select: {
-        id: true,
-        masjid_id: true,
-        kode_unik: true,
-        nama_kk: true,
-        alamat_muzaqi: true,
-        jumlah_jiwa: true,
-        jenis_bayar: true,
-        nominal_zakat: true,
-        nominal_infaq: true,
-        total_beras_kg: true,
-        waktu_transaksi: true,
-      },
-    });
+    const zis = includeMasjidScope
+      ? await client.transaksiZis.findUnique({
+          where: { kode_unik: normalizedKode },
+          select: {
+            id: true,
+            masjid_id: true,
+            kode_unik: true,
+            nama_kk: true,
+            alamat_muzaqi: true,
+            jumlah_jiwa: true,
+            jenis_bayar: true,
+            nominal_zakat: true,
+            nominal_infaq: true,
+            total_beras_kg: true,
+            waktu_transaksi: true,
+          },
+        })
+      : null;
 
     if (zis) {
       res.status(200).json({
