@@ -858,3 +858,58 @@ export const deleteKasRW = async (req: Request, res: Response): Promise<void> =>
     });
   }
 };
+
+export const getBlokWilayah = async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!req.user?.id) {
+      res.status(401).json({
+        success: false,
+        message: "User belum terautentikasi.",
+      });
+      return;
+    }
+
+    const rwWilayah = await prisma.wilayahRW.findUnique({
+      where: { user_id: req.user.id },
+      select: {
+        id: true,
+        nama_kompleks: true,
+        no_rw: true,
+        blok_wilayah: {
+          select: {
+            id: true,
+            nama_blok: true,
+            no_rt: true,
+          },
+          orderBy: { nama_blok: "asc" },
+        },
+      },
+    });
+
+    if (!rwWilayah) {
+      res.status(403).json({
+        success: false,
+        message: "Wilayah RW untuk user login tidak ditemukan.",
+      });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Data blok wilayah berhasil diambil.",
+      data: {
+        wilayah_rw: {
+          id: rwWilayah.id,
+          nama_kompleks: rwWilayah.nama_kompleks,
+          no_rw: rwWilayah.no_rw,
+        },
+        blok_list: rwWilayah.blok_wilayah,
+      },
+    });
+  } catch {
+    res.status(500).json({
+      success: false,
+      message: "Terjadi kesalahan saat mengambil data blok wilayah.",
+    });
+  }
+};

@@ -10,6 +10,7 @@ import {
   createKasRW,
   createWarga,
   deleteKasRW,
+  getBlokWilayah,
   getKasRW,
   getIuranWarga,
   updateKasRW,
@@ -85,6 +86,14 @@ router.post(
   checkApproval,
   validateBody(createWargaSchema),
   createWarga
+);
+router.get(
+  "/rw/blok-wilayah",
+  rwActionRateLimit,
+  verifyToken,
+  checkRole(["RW"]),
+  checkApproval,
+  getBlokWilayah
 );
 router.get(
   "/rw/iuran-warga",
