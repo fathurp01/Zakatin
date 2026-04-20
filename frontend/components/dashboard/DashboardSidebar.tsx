@@ -13,6 +13,7 @@ import {
   HandCoins,
   ShieldCheck,
   BookOpenText,
+  Building2,
   SquarePen,
   FileText,
   Link2,
@@ -46,6 +47,12 @@ const rwItems: SidebarItem[] = [
     icon: ShieldCheck,
   },
   {
+    href: "/dashboard/rw/masjid",
+    label: "Master Masjid",
+    description: "Kelola data masjid per blok",
+    icon: Building2,
+  },
+  {
     href: "/dashboard/rw/kas",
     label: "Buku Kas RW",
     description: "Catat uang masuk dan keluar",
@@ -68,7 +75,7 @@ const rwItems: SidebarItem[] = [
 const masjidItems: SidebarItem[] = [
   {
     href: "/dashboard/masjid",
-    label: "Ringkasan ZIS",
+    label: "Dashboard ZIS",
     description: "Lihat total zakat, infaq, beras",
     icon: HandCoins,
   },
@@ -270,11 +277,6 @@ export function DashboardSidebar({ role }: { role: AppRole | null }) {
         {/* Theme toggle */}
         <ThemeToggle variant="pill" />
 
-        <div className="rounded-2xl border border-slate-200/50 bg-slate-50/60 px-4 py-3 dark:border-white/6 dark:bg-white/3">
-          <p className="text-[11px] text-slate-400 dark:text-muted-foreground/60 leading-relaxed">
-            Akses disesuaikan dengan role akun yang aktif.
-          </p>
-        </div>
       </div>
     </div>
   );

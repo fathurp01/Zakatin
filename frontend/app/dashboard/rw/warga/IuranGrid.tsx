@@ -67,7 +67,7 @@ export default function IuranGrid({
         <span className="text-6xl mb-4">🏘️</span>
         <p className="text-xl font-bold text-slate-700 dark:text-foreground">Belum ada data warga</p>
         <p className="text-base text-slate-500 dark:text-muted-foreground mt-2">
-          Pilih blok wilayah dan tahun di atas, lalu klik "Tampilkan Data"
+          Pilih blok wilayah dan tahun di atas, lalu klik &quot;Tampilkan Data&quot;
         </p>
       </div>
     );

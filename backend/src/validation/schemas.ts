@@ -25,6 +25,7 @@ export const registerSchema = z
 export const loginSchema = z.object({
   email: z.string().trim().email().transform((value) => value.toLowerCase()),
   password: z.string().min(1).max(128),
+  role: z.enum(["RW", "PENGURUS_MASJID"]).optional(),
 });
 
 export const approvePengurusSchema = z
@@ -64,6 +65,31 @@ export const getWargaListQuerySchema = z.object({
   blok_wilayah_id: uuidSchema.optional(),
   search: z.string().trim().min(1).max(100).optional(),
 });
+
+export const getRwMasjidListQuerySchema = z.object({
+  blok_wilayah_id: uuidSchema.optional(),
+  search: z.string().trim().min(1).max(100).optional(),
+});
+
+export const createRwMasjidSchema = z.object({
+  blok_wilayah_id: uuidSchema,
+  nama_masjid: z.string().trim().min(2).max(200),
+  alamat: z.string().trim().min(3).max(1000),
+});
+
+export const rwMasjidParamsSchema = z.object({
+  masjid_id: uuidSchema,
+});
+
+export const updateRwMasjidSchema = z
+  .object({
+    blok_wilayah_id: uuidSchema.optional(),
+    nama_masjid: z.string().trim().min(2).max(200).optional(),
+    alamat: z.string().trim().min(3).max(1000).optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "Minimal satu field harus dikirim untuk update masjid.",
+  });
 
 export const wargaParamsSchema = z.object({
   warga_id: uuidSchema,
@@ -174,41 +200,51 @@ export const shareLinkTokenParamsSchema = z.object({
   token: z.string().trim().min(8).max(200),
 });
 
-export const createTransaksiZisSchema = z
-  .object({
-    masjid_id: uuidSchema,
-    nama_kk: z.string().trim().min(2).max(150),
-    alamat_muzaqi: z.string().trim().min(3).max(1000),
-    jumlah_jiwa: z.coerce.number().int().positive(),
-    jenis_bayar: z.enum(["UANG", "BERAS"]),
-    nominal_zakat: z.coerce.number().min(0).optional(),
-    nominal_infaq: z.coerce.number().min(0).optional(),
-    total_beras_kg: z.coerce.number().min(0).optional(),
-  })
-  .superRefine((value, ctx) => {
-    const nominalZakat = value.nominal_zakat ?? 0;
-    const nominalInfaq = value.nominal_infaq ?? 0;
-    const totalBeras = value.total_beras_kg ?? 0;
-
-    if (value.jenis_bayar === "UANG" && nominalZakat + nominalInfaq <= 0) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["nominal_zakat"],
-        message: "Untuk jenis UANG, nominal_zakat atau nominal_infaq harus lebih dari 0.",
-      });
-    }
-
-    if (value.jenis_bayar === "BERAS" && totalBeras <= 0) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["total_beras_kg"],
-        message: "Untuk jenis BERAS, total_beras_kg harus lebih dari 0.",
-      });
-    }
-  });
+export const createTransaksiZisSchema = z.object({
+  masjid_id: uuidSchema,
+  nama_kk: z.string().trim().min(2).max(150),
+  alamat_muzaqi: z.string().trim().min(3).max(1000),
+  jumlah_jiwa: z.coerce.number().int().positive(),
+  jenis_bayar: z.enum(["UANG", "BERAS"]),
+  nominal_infaq: z.coerce.number().min(0).optional(),
+  waktu_transaksi: z.string().datetime({ offset: true }).optional(),
+});
 
 export const getDashboardZisQuerySchema = z.object({
   masjid_id: uuidSchema.optional(),
+});
+
+export const getRecentTransaksiZisQuerySchema = z.object({
+  masjid_id: uuidSchema.optional(),
+});
+
+export const getTransaksiZisListQuerySchema = z.object({
+  masjid_id: uuidSchema.optional(),
+  start_date: z.string().datetime().optional(),
+  end_date: z.string().datetime().optional(),
+  page: z.coerce.number().int().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+});
+
+export const transaksiZisParamsSchema = z.object({
+  transaksi_id: uuidSchema,
+});
+
+export const updateTransaksiZisSchema = z.object({
+  nama_kk: z.string().trim().min(2).max(150).optional(),
+  alamat_muzaqi: z.string().trim().min(3).max(1000).optional(),
+  jumlah_jiwa: z.coerce.number().int().positive().optional(),
+  jenis_bayar: z.enum(["UANG", "BERAS"]).optional(),
+  nominal_zakat: z.coerce.number().min(0).optional(),
+  nominal_infaq: z.coerce.number().min(0).optional(),
+  total_beras_kg: z.coerce.number().min(0).optional(),
+});
+
+export const exportZisQuerySchema = z.object({
+  masjid_id: uuidSchema.optional(),
+  start_date: z.string().datetime().optional(),
+  end_date: z.string().datetime().optional(),
+  format: z.enum(["PDF", "XLSX"]).optional(),
 });
 
 export const masjidListQuerySchema = z.object({

@@ -20,9 +20,23 @@ import {
   updateKasRW,
 } from "../controllers/rwController";
 import {
+  createRwMasjid,
+  listRwMasjid,
+  updateRwMasjid,
+} from "../controllers/rwMasjidController";
+import {
   createTransaksiZis,
+  deleteTransaksiZis,
+  updateTransaksiZis,
   getDashboardZis,
+  getRecentTransaksiZis,
+  getTransaksiZisList,
+  exportRekapMuzaqi,
+  exportRekapDistribusi,
+  exportKwitansiZis,
 } from "../controllers/zisController";
+
+
 import {
   exportMasjidReport,
   exportRwReport,
@@ -72,6 +86,13 @@ import {
   createTransaksiZisSchema,
   createWargaSchema,
   getDashboardZisQuerySchema,
+  getRecentTransaksiZisQuerySchema,
+  getTransaksiZisListQuerySchema,
+  transaksiZisParamsSchema,
+  updateTransaksiZisSchema,
+  exportZisQuerySchema,
+  getRwMasjidListQuerySchema,
+
   exportReportQuerySchema,
   getKasMasjidQuerySchema,
   getIuranWargaQuerySchema,
@@ -86,6 +107,9 @@ import {
   loginSchema,
   masjidListQuerySchema,
   registerSchema,
+  rwMasjidParamsSchema,
+  createRwMasjidSchema,
+  updateRwMasjidSchema,
   updateWargaSchema,
   updateKasMasjidSchema,
   wargaParamsSchema,
@@ -168,6 +192,34 @@ router.get(
   checkRole(["RW"]),
   checkApproval,
   getBlokWilayah
+);
+router.get(
+  "/rw/masjid",
+  rwActionRateLimit,
+  verifyToken,
+  checkRole(["RW"]),
+  checkApproval,
+  validateQuery(getRwMasjidListQuerySchema),
+  listRwMasjid
+);
+router.post(
+  "/rw/masjid",
+  rwActionRateLimit,
+  verifyToken,
+  checkRole(["RW"]),
+  checkApproval,
+  validateBody(createRwMasjidSchema),
+  createRwMasjid
+);
+router.patch(
+  "/rw/masjid/:masjid_id",
+  rwActionRateLimit,
+  verifyToken,
+  checkRole(["RW"]),
+  checkApproval,
+  validateParams(rwMasjidParamsSchema),
+  validateBody(updateRwMasjidSchema),
+  updateRwMasjid
 );
 router.get(
   "/rw/iuran-warga",
@@ -286,6 +338,70 @@ router.get(
   checkApproval,
   validateQuery(getDashboardZisQuerySchema),
   getDashboardZis
+);
+router.get(
+  "/zis/transaksi",
+  zisActionRateLimit,
+  verifyToken,
+  checkRole(["PENGURUS_MASJID"]),
+  checkApproval,
+  validateQuery(getTransaksiZisListQuerySchema),
+  getTransaksiZisList
+);
+router.get(
+  "/zis/transaksi/recent",
+  zisActionRateLimit,
+  verifyToken,
+  checkRole(["PENGURUS_MASJID"]),
+  checkApproval,
+  validateQuery(getRecentTransaksiZisQuerySchema),
+  getRecentTransaksiZis
+);
+router.get(
+  "/zis/transaksi/export/muzaqi",
+  zisActionRateLimit,
+  verifyToken,
+  checkRole(["PENGURUS_MASJID"]),
+  checkApproval,
+  validateQuery(exportZisQuerySchema),
+  exportRekapMuzaqi
+);
+router.get(
+  "/zis/transaksi/export/distribusi",
+  zisActionRateLimit,
+  verifyToken,
+  checkRole(["PENGURUS_MASJID"]),
+  checkApproval,
+  validateQuery(exportZisQuerySchema),
+  exportRekapDistribusi
+);
+router.get(
+  "/zis/transaksi/:transaksi_id/kwitansi",
+  zisActionRateLimit,
+  verifyToken,
+  checkRole(["PENGURUS_MASJID"]),
+  checkApproval,
+  validateParams(transaksiZisParamsSchema),
+  exportKwitansiZis
+);
+router.patch(
+  "/zis/transaksi/:transaksi_id",
+  zisActionRateLimit,
+  verifyToken,
+  checkRole(["PENGURUS_MASJID"]),
+  checkApproval,
+  validateParams(transaksiZisParamsSchema),
+  validateBody(updateTransaksiZisSchema),
+  updateTransaksiZis
+);
+router.delete(
+  "/zis/transaksi/:transaksi_id",
+  zisActionRateLimit,
+  verifyToken,
+  checkRole(["PENGURUS_MASJID"]),
+  checkApproval,
+  validateParams(transaksiZisParamsSchema),
+  deleteTransaksiZis
 );
 router.get(
   "/masjid/report",

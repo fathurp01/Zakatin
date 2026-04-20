@@ -1,14 +1,15 @@
 "use client";
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { HandCoins, Wheat, Wallet, TrendingUp } from "lucide-react";
 
 interface DashboardZisPayload {
   masjid_id: string;
   total_beras: number;
   total_uang_zakat: number;
   total_infaq: number;
+  total_kk?: number;
+  total_jiwa?: number;
+  total_dana_distribusi?: number;
 }
 
 type Distribution = {
@@ -18,11 +19,22 @@ type Distribution = {
   lainnya: number;
 };
 
-const distributionLabels: { key: keyof Distribution; label: string; pct: string }[] = [
-  { key: "fakir", label: "Fakir", pct: "62.5%" },
-  { key: "amil", label: "Amil", pct: "8%" },
-  { key: "fisabilillah", label: "Fisabilillah", pct: "11%" },
-  { key: "lainnya", label: "Lainnya", pct: "18.5%" },
+interface PengaturanZis {
+  persen_fakir: number;
+  persen_amil: number;
+  persen_fisabilillah: number;
+  persen_lainnya: number;
+}
+
+const distributionLabels: {
+  key: keyof Distribution;
+  label: string;
+  pctKey: keyof PengaturanZis;
+}[] = [
+  { key: "fakir", label: "Fakir Miskin", pctKey: "persen_fakir" },
+  { key: "amil", label: "Amil", pctKey: "persen_amil" },
+  { key: "fisabilillah", label: "Fisabilillah", pctKey: "persen_fisabilillah" },
+  { key: "lainnya", label: "Lainnya", pctKey: "persen_lainnya" },
 ];
 
 export default function ZisCards({
@@ -30,162 +42,116 @@ export default function ZisCards({
   fixedUangDistribution,
   fixedBerasDistribution,
   formatRupiah,
+  pengaturanZis,
 }: {
   dashboardData: DashboardZisPayload;
   fixedUangDistribution: Distribution;
   fixedBerasDistribution: Distribution;
   formatRupiah: (value: number) => string;
+  pengaturanZis?: PengaturanZis;
 }) {
   const totalUangZakat = Number(dashboardData.total_uang_zakat || 0);
   const totalInfaq = Number(dashboardData.total_infaq || 0);
   const totalBeras = Number(dashboardData.total_beras || 0);
+  const totalKk = dashboardData.total_kk ?? 0;
+  const totalJiwa = dashboardData.total_jiwa ?? 0;
+  const totalDanaDistribusi = dashboardData.total_dana_distribusi ?? (totalUangZakat + totalInfaq);
 
-  const statCards = [
-    {
-      title: "Total Uang Zakat",
-      value: formatRupiah(totalUangZakat),
-      helper: "Akumulasi zakat uang yang terkumpul",
-      icon: Wallet,
-      gradient: "from-emerald-500 to-teal-600",
-      iconBg: "bg-emerald-50 dark:bg-emerald-950/40",
-      iconText: "text-emerald-600 dark:text-emerald-400",
-      border: "border-emerald-200/50 dark:border-emerald-800/30",
-      glow: "glow-masjid",
-    },
-    {
-      title: "Total Infaq",
-      value: formatRupiah(totalInfaq),
-      helper: "Akumulasi infaq yang diterima",
-      icon: HandCoins,
-      gradient: "from-teal-500 to-cyan-600",
-      iconBg: "bg-teal-50 dark:bg-teal-950/40",
-      iconText: "text-teal-600 dark:text-teal-400",
-      border: "border-teal-200/50 dark:border-teal-800/30",
-      glow: "glow-masjid",
-    },
-    {
-      title: "Total Beras",
-      value: `${totalBeras.toFixed(2)} kg`,
-      helper: "Akumulasi beras yang terkumpul",
-      icon: Wheat,
-      gradient: "from-amber-500 to-orange-500",
-      iconBg: "bg-amber-50 dark:bg-amber-950/40",
-      iconText: "text-amber-600 dark:text-amber-400",
-      border: "border-amber-200/50 dark:border-amber-800/30",
-      glow: "glow-pending",
-    },
-  ];
+  const persen = pengaturanZis ?? {
+    persen_fakir: 62.5,
+    persen_amil: 8,
+    persen_fisabilillah: 11,
+    persen_lainnya: 18.5,
+  };
 
   return (
-    <div className="flex flex-col gap-5">
-      {/* Stat cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {statCards.map(({ title, value, helper, icon: Icon, gradient, iconBg, iconText, border, glow }) => (
-          <div
-            key={title}
-            className={cn(
-              "group relative overflow-hidden rounded-3xl border bg-white dark:bg-card shadow-sm",
-              "hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200",
-              border
-            )}
-          >
-            {/* Top accent bar */}
-            <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r ${gradient} rounded-t-3xl`} />
-
-            <div className="p-5 pt-6">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold uppercase tracking-widest text-slate-500 dark:text-muted-foreground mb-1">
-                    {title}
-                  </p>
-                  <p className="text-2xl font-extrabold tracking-tight text-slate-900 dark:text-foreground truncate">
-                    {value}
-                  </p>
-                  <p className="text-xs text-slate-400 dark:text-muted-foreground mt-1.5">{helper}</p>
-                </div>
-                <span className={cn("inline-flex size-11 items-center justify-center rounded-2xl flex-shrink-0 shadow-sm", iconBg, iconText, glow)}>
-                  <Icon className="size-5" />
-                </span>
-              </div>
-            </div>
-          </div>
-        ))}
+    <div className="flex flex-col gap-4">
+      {/* ── Card 1: Penerimaan (3 kolom terpisah jelas) ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="rounded-2xl border border-slate-200/70 dark:border-white/10 bg-white dark:bg-card shadow-sm px-5 py-4">
+          <p className="text-xs font-semibold text-slate-500 dark:text-muted-foreground mb-1.5">Total Beras (kg)</p>
+          <p className="text-xl font-extrabold tabular-nums text-slate-900 dark:text-foreground">
+            {totalBeras.toFixed(2)} kg
+          </p>
+        </div>
+        <div className="rounded-2xl border border-emerald-200/70 dark:border-emerald-800/30 bg-emerald-50/60 dark:bg-emerald-950/20 shadow-sm px-5 py-4">
+          <p className="text-xs font-semibold text-emerald-600/70 dark:text-emerald-400/70 mb-1.5">Total Uang Zakat (Rp)</p>
+          <p className="text-xl font-extrabold tabular-nums text-slate-900 dark:text-foreground">
+            {formatRupiah(totalUangZakat)}
+          </p>
+        </div>
+        <div className="rounded-2xl border border-teal-200/70 dark:border-teal-800/30 bg-teal-50/60 dark:bg-teal-950/20 shadow-sm px-5 py-4">
+          <p className="text-xs font-semibold text-teal-600/70 dark:text-teal-400/70 mb-1.5">Total Infaq (Rp)</p>
+          <p className="text-xl font-extrabold tabular-nums text-slate-900 dark:text-foreground">
+            {formatRupiah(totalInfaq)}
+          </p>
+        </div>
       </div>
 
-      {/* Distribusi Uang Zakat */}
-      <Card>
-        <CardHeader className="border-b border-slate-100 dark:border-white/8 pb-4">
-          <div className="flex items-center gap-2">
-            <TrendingUp className="size-4 text-emerald-500" />
-            <CardTitle>Distribusi Uang Zakat</CardTitle>
+      {/* ── Card 2: Detail Distribusi ── */}
+      <div className="rounded-2xl border border-slate-200/70 dark:border-white/10 bg-white dark:bg-card shadow-sm overflow-hidden">
+        {/* Baris 2a: KK/Jiwa | Dana Distribusi | Breakdown Dana */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-slate-100 dark:divide-white/8">
+          <div className="px-5 py-4">
+            <p className="text-xs font-semibold text-slate-500 dark:text-muted-foreground mb-1.5">Total KK / Jiwa</p>
+            <p className="text-lg tabular-nums text-slate-900 dark:text-foreground">
+              <span className="font-extrabold">{totalKk} KK</span>
+              <span className="text-slate-400 dark:text-muted-foreground"> • </span>
+              <span className="font-extrabold">{totalJiwa} Jiwa</span>
+            </p>
           </div>
-          <CardDescription>
-            Formula tetap: Fakir 62.5% · Amil 8% · Fisabilillah 11% · Lainnya 18.5%
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="pt-5">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {distributionLabels.map(({ key, label, pct }) => {
-              const value = fixedUangDistribution[key];
-              const percentage = parseFloat(pct);
-              return (
-                <div
-                  key={key}
-                  className="relative rounded-2xl border border-emerald-100 dark:border-emerald-800/30 bg-emerald-50/50 dark:bg-emerald-950/20 p-4 overflow-hidden"
-                >
-                  {/* Progress bar bg */}
-                  <div
-                    className="absolute bottom-0 left-0 h-1 rounded-b-2xl bg-gradient-to-r from-emerald-500 to-teal-500 opacity-70"
-                    style={{ width: `${percentage}%` }}
-                  />
-                  <p className="text-xs font-bold uppercase tracking-widest text-emerald-600 dark:text-emerald-400 mb-0.5">
-                    {label} <span className="text-emerald-400/70 font-medium">({pct})</span>
-                  </p>
-                  <p className="text-base font-extrabold tabular-nums text-slate-900 dark:text-foreground">
-                    {formatRupiah(value)}
-                  </p>
-                </div>
-              );
-            })}
+          <div className="px-5 py-4">
+            <p className="text-xs font-semibold text-slate-500 dark:text-muted-foreground mb-1.5">Total Dana Distribusi (Rp)</p>
+            <p className="text-lg font-extrabold tabular-nums text-slate-900 dark:text-foreground">
+              {formatRupiah(totalDanaDistribusi)}
+            </p>
           </div>
-        </CardContent>
-      </Card>
+          <div className="px-5 py-4">
+            <p className="text-xs font-semibold text-slate-500 dark:text-muted-foreground mb-2">Breakdown Distribusi</p>
+            <ul className="space-y-1.5">
+              {distributionLabels.map(({ key, label, pctKey }) => (
+                <li key={key} className="flex items-center justify-between gap-2 text-sm">
+                  <span className="text-slate-600 dark:text-foreground/80">
+                    {label} ({persen[pctKey]}%):
+                  </span>
+                  <span className="font-bold tabular-nums text-slate-900 dark:text-foreground">
+                    {formatRupiah(fixedUangDistribution[key])}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
 
-      {/* Distribusi Beras */}
-      <Card>
-        <CardHeader className="border-b border-slate-100 dark:border-white/8 pb-4">
-          <div className="flex items-center gap-2">
-            <Wheat className="size-4 text-amber-500" />
-            <CardTitle>Distribusi Beras (kg)</CardTitle>
+        {/* Divider dalam card 2 */}
+        <div className="h-px bg-slate-100 dark:bg-white/8" />
+
+        {/* Baris 2b: Beras Distribusi | Breakdown Beras */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-slate-100 dark:divide-white/8">
+          <div className="px-5 py-4">
+            <p className="text-xs font-semibold text-slate-500 dark:text-muted-foreground mb-1.5">Total Beras Distribusi (kg)</p>
+            <p className="text-lg font-extrabold tabular-nums text-slate-900 dark:text-foreground">
+              {totalBeras.toFixed(2)} kg
+            </p>
           </div>
-          <CardDescription>Distribusi beras menggunakan formula tetap yang sama.</CardDescription>
-        </CardHeader>
-        <CardContent className="pt-5">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {distributionLabels.map(({ key, label, pct }) => {
-              const value = fixedBerasDistribution[key];
-              const percentage = parseFloat(pct);
-              return (
-                <div
-                  key={key}
-                  className="relative rounded-2xl border border-amber-100 dark:border-amber-800/30 bg-amber-50/50 dark:bg-amber-950/20 p-4 overflow-hidden"
-                >
-                  <div
-                    className="absolute bottom-0 left-0 h-1 rounded-b-2xl bg-gradient-to-r from-amber-500 to-orange-500 opacity-70"
-                    style={{ width: `${percentage}%` }}
-                  />
-                  <p className="text-xs font-bold uppercase tracking-widest text-amber-600 dark:text-amber-400 mb-0.5">
-                    {label} <span className="text-amber-400/70 font-medium">({pct})</span>
-                  </p>
-                  <p className="text-base font-extrabold tabular-nums text-slate-900 dark:text-foreground">
-                    {value.toFixed(2)} kg
-                  </p>
-                </div>
-              );
-            })}
+          <div className="px-5 py-4 sm:col-span-2">
+            <p className="text-xs font-semibold text-slate-500 dark:text-muted-foreground mb-2">Breakdown Distribusi Beras</p>
+            <ul className="grid grid-cols-2 gap-x-6 gap-y-1.5">
+              {distributionLabels.map(({ key, label, pctKey }) => (
+                <li key={key} className="flex items-center justify-between gap-2 text-sm">
+                  <span className="text-slate-600 dark:text-foreground/80">
+                    {label} ({persen[pctKey]}%):
+                  </span>
+                  <span className="font-bold tabular-nums text-slate-900 dark:text-foreground">
+                    {fixedBerasDistribution[key].toFixed(2)} kg
+                  </span>
+                </li>
+              ))}
+            </ul>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   );
 }
+

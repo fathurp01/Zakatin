@@ -1,6 +1,8 @@
-import { randomUUID } from "crypto";
+import { randomBytes } from "crypto";
 import { Request, Response } from "express";
 import { JenisBayar, PengaturanZis, Prisma } from "@prisma/client";
+import ExcelJS from "exceljs";
+import PDFDocument from "pdfkit";
 import { prisma } from "../lib/prisma";
 
 interface CreateTransaksiZisBody {
@@ -9,18 +11,52 @@ interface CreateTransaksiZisBody {
   alamat_muzaqi?: string;
   jumlah_jiwa?: number | string;
   jenis_bayar?: JenisBayar;
-  nominal_zakat?: number | string;
   nominal_infaq?: number | string;
-  total_beras_kg?: number | string;
+  waktu_transaksi?: string;
 }
 
 interface GetDashboardZisQuery {
   masjid_id?: string;
 }
 
-const generateKodeUnikZis = (): string => {
-  const year = new Date().getFullYear();
-  return `ZIS-${year}-${randomUUID().toUpperCase()}`;
+interface GetTransaksiZisQuery {
+  masjid_id?: string;
+  start_date?: string;
+  end_date?: string;
+  page?: string | number;
+  limit?: string | number;
+}
+
+interface ExportZisQuery {
+  masjid_id?: string;
+  start_date?: string;
+  end_date?: string;
+  format?: "PDF" | "XLSX";
+}
+
+const createKodeUnikZisCandidate = (date: Date): string => {
+  const year2 = String(date.getFullYear()).slice(-2);
+  const month2 = String(date.getMonth() + 1).padStart(2, "0");
+  const suffix = randomBytes(3).toString("hex").toUpperCase();
+  return `ZIS-${year2}${month2}-${suffix}`;
+};
+
+const generateKodeUnikZis = async (client: typeof prisma): Promise<string> => {
+  const now = new Date();
+
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    const candidate = createKodeUnikZisCandidate(now);
+    const exists = await client.transaksiZis.findUnique({
+      where: { kode_unik: candidate },
+      select: { id: true },
+    });
+
+    if (!exists) {
+      return candidate;
+    }
+  }
+
+  throw new Error("Gagal membuat kode unik ZIS.");
 };
 
 const toNonNegativeNumber = (
@@ -57,6 +93,13 @@ const decimalToNumber = (value: Prisma.Decimal | null): number => {
 const roundTo2 = (value: number): number => {
   return Math.round(value * 100) / 100;
 };
+
+const formatCurrencyId = (value: number): string =>
+  new Intl.NumberFormat("id-ID", {
+    style: "currency",
+    currency: "IDR",
+    maximumFractionDigits: 0,
+  }).format(value);
 
 const getAuthorizedMasjidId = async (
   client: typeof prisma,
@@ -110,6 +153,14 @@ const calculateDistribution = (
   };
 };
 
+// Helper: parse date filter
+const parseDateRange = (start_date?: string, end_date?: string) => {
+  const startParsed = start_date ? new Date(start_date) : null;
+  const endParsed = end_date ? new Date(end_date) : null;
+  if (endParsed) endParsed.setHours(23, 59, 59, 999);
+  return { startParsed, endParsed };
+};
+
 export const createTransaksiZisWithClient = async (
   client: typeof prisma,
   req: Request,
@@ -122,9 +173,8 @@ export const createTransaksiZisWithClient = async (
       alamat_muzaqi,
       jumlah_jiwa,
       jenis_bayar,
-      nominal_zakat,
       nominal_infaq,
-      total_beras_kg,
+      waktu_transaksi,
     } = req.body as CreateTransaksiZisBody;
 
     if (!masjid_id || !nama_kk || !alamat_muzaqi || !jumlah_jiwa || !jenis_bayar) {
@@ -153,34 +203,11 @@ export const createTransaksiZisWithClient = async (
       return;
     }
 
-    const nominalZakat = toNonNegativeNumber(nominal_zakat);
     const nominalInfaq = toNonNegativeNumber(nominal_infaq);
-    const totalBeras = toNonNegativeNumber(total_beras_kg);
-
-    if (
-      Number.isNaN(nominalZakat) ||
-      Number.isNaN(nominalInfaq) ||
-      Number.isNaN(totalBeras)
-    ) {
+    if (Number.isNaN(nominalInfaq)) {
       res.status(400).json({
         success: false,
-        message: "nominal_zakat, nominal_infaq, dan total_beras_kg harus angka >= 0.",
-      });
-      return;
-    }
-
-    if (jenis_bayar === JenisBayar.UANG && nominalZakat + nominalInfaq <= 0) {
-      res.status(400).json({
-        success: false,
-        message: "Untuk jenis UANG, nominal_zakat atau nominal_infaq harus lebih dari 0.",
-      });
-      return;
-    }
-
-    if (jenis_bayar === JenisBayar.BERAS && totalBeras <= 0) {
-      res.status(400).json({
-        success: false,
-        message: "Untuk jenis BERAS, total_beras_kg harus lebih dari 0.",
+        message: "nominal_infaq harus angka >= 0.",
       });
       return;
     }
@@ -195,17 +222,45 @@ export const createTransaksiZisWithClient = async (
       return;
     }
 
+    const pengaturan = await client.pengaturanZis.findUnique({
+      where: { masjid_id: authorizedMasjidId },
+    });
+
+    if (!pengaturan) {
+      res.status(404).json({
+        success: false,
+        message: "Pengaturan ZIS untuk masjid ini belum tersedia.",
+      });
+      return;
+    }
+
+    // Perhitungan Zakat Otomatis
+    let calculatedZakatUang = 0;
+    let calculatedTotalBeras = 0;
+
+    if (jenis_bayar === JenisBayar.UANG) {
+      // Zakat Fits = jumlah_jiwa * 2.5 kg * harga_beras_per_kg
+      calculatedZakatUang = Math.round(jumlahJiwaInt * 2.5 * Number(pengaturan.harga_beras_per_kg));
+    } else if (jenis_bayar === JenisBayar.BERAS) {
+      calculatedTotalBeras = jumlahJiwaInt * 2.5; // standar 2.5 kg per jiwa
+    }
+
+    const now = waktu_transaksi ? new Date(waktu_transaksi) : new Date();
+
+    const kodeUnik = await generateKodeUnikZis(client);
+
     const transaksi = await client.transaksiZis.create({
       data: {
         masjid_id: authorizedMasjidId,
-        kode_unik: generateKodeUnikZis(),
+        kode_unik: kodeUnik,
         nama_kk,
         alamat_muzaqi,
         jumlah_jiwa: jumlahJiwaInt,
         jenis_bayar,
-        nominal_zakat: new Prisma.Decimal(nominalZakat),
+        nominal_zakat: new Prisma.Decimal(calculatedZakatUang),
         nominal_infaq: new Prisma.Decimal(nominalInfaq),
-        total_beras_kg: new Prisma.Decimal(totalBeras),
+        total_beras_kg: new Prisma.Decimal(calculatedTotalBeras),
+        waktu_transaksi: now,
       },
       select: {
         id: true,
@@ -282,21 +337,32 @@ export const getDashboardZisWithClient = async (
       return;
     }
 
-    const aggregate = await client.transaksiZis.aggregate({
-      where: { masjid_id: authorizedMasjidId },
-      _sum: {
-        total_beras_kg: true,
-        nominal_zakat: true,
-        nominal_infaq: true,
-      },
-    });
+    // Aggregate sum + total KK & jiwa
+    const [aggregate, countResult] = await Promise.all([
+      client.transaksiZis.aggregate({
+        where: { masjid_id: authorizedMasjidId },
+        _sum: {
+          total_beras_kg: true,
+          nominal_zakat: true,
+          nominal_infaq: true,
+          jumlah_jiwa: true,
+        },
+        _count: { id: true },
+      }),
+      // total KK = distinct nama_kk? We'll just use count of rows as total KK
+      Promise.resolve(null),
+    ]);
 
     const totalBeras = roundTo2(decimalToNumber(aggregate._sum.total_beras_kg));
     const totalUangZakat = roundTo2(decimalToNumber(aggregate._sum.nominal_zakat));
     const totalInfaq = roundTo2(decimalToNumber(aggregate._sum.nominal_infaq));
+    const totalKk = aggregate._count.id;
+    const totalJiwa = aggregate._sum.jumlah_jiwa ?? 0;
 
     const distribusiUang = calculateDistribution(pengaturan, totalUangZakat);
     const distribusiBerasKg = calculateDistribution(pengaturan, totalBeras);
+
+    const totalDanaDistribusi = totalUangZakat + totalInfaq;
 
     res.status(200).json({
       success: true,
@@ -307,6 +373,9 @@ export const getDashboardZisWithClient = async (
         total_beras: totalBeras,
         total_uang_zakat: totalUangZakat,
         total_infaq: totalInfaq,
+        total_kk: totalKk,
+        total_jiwa: totalJiwa,
+        total_dana_distribusi: totalDanaDistribusi,
         distribusi_uang_zakat: {
           persen: {
             fakir: pengaturan.persen_fakir,
@@ -340,4 +409,795 @@ export const getDashboardZis = async (
   res: Response
 ): Promise<void> => {
   return getDashboardZisWithClient(prisma, req, res);
+};
+
+// ─── Full list with date filter ───────────────────────────────────────────────
+
+export const getTransaksiZisList = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { masjid_id, start_date, end_date, page, limit } = req.query as GetTransaksiZisQuery;
+
+    const authorizedMasjidId = await getAuthorizedMasjidId(prisma, req, masjid_id);
+    if (!authorizedMasjidId) {
+      res.status(403).json({
+        success: false,
+        message:
+          "Anda tidak memiliki akses ke masjid ini atau belum terdaftar sebagai pengurus masjid.",
+      });
+      return;
+    }
+
+    const { startParsed, endParsed } = parseDateRange(start_date, end_date);
+
+    const pageNum = page ? parseInt(page as string, 10) : 1;
+    const limitNum = limit ? parseInt(limit as string, 10) : 10;
+    const skip = (pageNum - 1) * limitNum;
+
+    const whereClause: Prisma.TransaksiZisWhereInput = {
+      masjid_id: authorizedMasjidId,
+      ...(startParsed || endParsed
+        ? {
+            waktu_transaksi: {
+              ...(startParsed ? { gte: startParsed } : {}),
+              ...(endParsed ? { lte: endParsed } : {}),
+            },
+          }
+        : {}),
+    };
+
+    const [total_count, transaksi] = await Promise.all([
+      prisma.transaksiZis.count({ where: whereClause }),
+      prisma.transaksiZis.findMany({
+        where: whereClause,
+        orderBy: { waktu_transaksi: "desc" },
+        skip,
+        take: limitNum,
+        select: {
+          id: true,
+          kode_unik: true,
+          nama_kk: true,
+          alamat_muzaqi: true,
+          jumlah_jiwa: true,
+          jenis_bayar: true,
+          nominal_zakat: true,
+          nominal_infaq: true,
+          total_beras_kg: true,
+          waktu_transaksi: true,
+        },
+      }),
+    ]);
+
+    const total_pages = Math.ceil(total_count / limitNum);
+
+    res.status(200).json({
+      success: true,
+      message: "Daftar transaksi ZIS berhasil diambil.",
+      data: transaksi,
+      meta: {
+        total_count,
+        total_pages,
+        current_page: pageNum,
+        limit: limitNum,
+      },
+    });
+  } catch {
+    res.status(500).json({
+      success: false,
+      message: "Terjadi kesalahan saat mengambil transaksi ZIS.",
+    });
+  }
+};
+
+// ─── Delete transaksi ZIS ─────────────────────────────────────────────────────
+
+export const deleteTransaksiZis = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { transaksi_id } = req.params as { transaksi_id?: string };
+    if (!transaksi_id) {
+      res.status(400).json({ success: false, message: "transaksi_id wajib diisi." });
+      return;
+    }
+
+    const existing = await prisma.transaksiZis.findUnique({
+      where: { id: transaksi_id },
+      select: { id: true, masjid_id: true },
+    });
+    if (!existing) {
+      res.status(404).json({ success: false, message: "Transaksi tidak ditemukan." });
+      return;
+    }
+
+    const authorizedMasjidId = await getAuthorizedMasjidId(prisma, req, existing.masjid_id);
+    if (!authorizedMasjidId) {
+      res.status(403).json({ success: false, message: "Akses ditolak." });
+      return;
+    }
+
+    await prisma.transaksiZis.delete({ where: { id: transaksi_id } });
+    res.status(200).json({ success: true, message: "Transaksi ZIS berhasil dihapus." });
+  } catch {
+    res.status(500).json({ success: false, message: "Terjadi kesalahan saat menghapus transaksi." });
+  }
+};
+
+// ─── Update transaksi ZIS ─────────────────────────────────────────────────────
+
+export const updateTransaksiZis = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { transaksi_id } = req.params as { transaksi_id?: string };
+    if (!transaksi_id) {
+      res.status(400).json({ success: false, message: "transaksi_id wajib diisi." });
+      return;
+    }
+
+    const existing = await prisma.transaksiZis.findUnique({
+      where: { id: transaksi_id },
+      select: { id: true, masjid_id: true, nominal_infaq: true },
+    });
+    if (!existing) {
+      res.status(404).json({ success: false, message: "Transaksi tidak ditemukan." });
+      return;
+    }
+
+    const authorizedMasjidId = await getAuthorizedMasjidId(prisma, req, existing.masjid_id);
+    if (!authorizedMasjidId) {
+      res.status(403).json({ success: false, message: "Akses ditolak." });
+      return;
+    }
+
+    const {
+      nama_kk,
+      alamat_muzaqi,
+      jumlah_jiwa,
+      jenis_bayar,
+      nominal_infaq,
+      waktu_transaksi,
+    } = req.body as CreateTransaksiZisBody;
+
+    const jumlahJiwaInt = jumlah_jiwa !== undefined ? toPositiveInteger(jumlah_jiwa) : undefined;
+    if (jumlahJiwaInt !== undefined && Number.isNaN(jumlahJiwaInt)) {
+      res.status(400).json({ success: false, message: "jumlah_jiwa harus bilangan bulat > 0." });
+      return;
+    }
+
+    const pengaturan = await prisma.pengaturanZis.findUnique({
+      where: { masjid_id: authorizedMasjidId },
+    });
+
+    if (!pengaturan) {
+      res.status(404).json({ success: false, message: "Pengaturan ZIS untuk masjid ini belum tersedia." });
+      return;
+    }
+
+    // Determine values to update. If missing, fetch existing to calculate correctly.
+    let finalJenisBayar = jenis_bayar;
+    let finalJumlahJiwa = jumlahJiwaInt;
+
+    if (!finalJenisBayar || !finalJumlahJiwa) {
+      const trx = await prisma.transaksiZis.findUnique({ where: { id: transaksi_id } });
+      if (!trx) return;
+      if (!finalJenisBayar) finalJenisBayar = trx.jenis_bayar;
+      if (!finalJumlahJiwa) finalJumlahJiwa = trx.jumlah_jiwa;
+    }
+
+    let calculatedZakatUang = 0;
+    let calculatedTotalBeras = 0;
+
+    if (finalJenisBayar === JenisBayar.UANG) {
+      calculatedZakatUang = Math.round((finalJumlahJiwa ?? 0) * 2.5 * Number(pengaturan.harga_beras_per_kg));
+    } else if (finalJenisBayar === JenisBayar.BERAS) {
+      calculatedTotalBeras = (finalJumlahJiwa ?? 0) * 2.5; 
+    }
+
+    const updated = await prisma.transaksiZis.update({
+      where: { id: transaksi_id },
+      data: {
+        ...(nama_kk !== undefined ? { nama_kk } : {}),
+        ...(alamat_muzaqi !== undefined ? { alamat_muzaqi } : {}),
+        ...(jumlahJiwaInt !== undefined ? { jumlah_jiwa: jumlahJiwaInt } : {}),
+        ...(jenis_bayar !== undefined ? { jenis_bayar } : {}),
+        nominal_zakat: new Prisma.Decimal(calculatedZakatUang),
+        nominal_infaq: new Prisma.Decimal(nominal_infaq !== undefined ? Number(nominal_infaq) : existing.nominal_infaq || 0),
+        total_beras_kg: new Prisma.Decimal(calculatedTotalBeras),
+        ...(waktu_transaksi !== undefined ? { waktu_transaksi: new Date(waktu_transaksi) } : {}),
+      },
+      select: {
+        id: true,
+        kode_unik: true,
+        nama_kk: true,
+        alamat_muzaqi: true,
+        jumlah_jiwa: true,
+        jenis_bayar: true,
+        nominal_zakat: true,
+        nominal_infaq: true,
+        total_beras_kg: true,
+        waktu_transaksi: true,
+      },
+    });
+
+    res.status(200).json({ success: true, message: "Transaksi ZIS berhasil diperbarui.", data: updated });
+  } catch {
+    res.status(500).json({ success: false, message: "Terjadi kesalahan saat memperbarui transaksi." });
+  }
+};
+
+// ─── Export Rekap Muzaqi (daftar donatur) ─────────────────────────────────────
+
+export const exportRekapMuzaqi = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { masjid_id, start_date, end_date, format } = req.query as ExportZisQuery;
+
+    const authorizedMasjidId = await getAuthorizedMasjidId(prisma, req, masjid_id);
+    if (!authorizedMasjidId) {
+      res.status(403).json({ success: false, message: "Akses ditolak." });
+      return;
+    }
+
+    const masjid = await prisma.masjid.findUnique({
+      where: { id: authorizedMasjidId },
+      select: { nama_masjid: true, alamat: true },
+    });
+
+    const { startParsed, endParsed } = parseDateRange(start_date, end_date);
+
+    const transaksi = await prisma.transaksiZis.findMany({
+      where: {
+        masjid_id: authorizedMasjidId,
+        ...(startParsed || endParsed
+          ? {
+              waktu_transaksi: {
+                ...(startParsed ? { gte: startParsed } : {}),
+                ...(endParsed ? { lte: endParsed } : {}),
+              },
+            }
+          : {}),
+      },
+      orderBy: { waktu_transaksi: "asc" },
+      select: {
+        kode_unik: true,
+        nama_kk: true,
+        alamat_muzaqi: true,
+        jumlah_jiwa: true,
+        jenis_bayar: true,
+        nominal_zakat: true,
+        nominal_infaq: true,
+        total_beras_kg: true,
+        waktu_transaksi: true,
+      },
+    });
+
+    const fmt = String(format ?? "XLSX").toUpperCase();
+    const isAll = !start_date || !end_date;
+    const periodeDisplay = isAll ? "Semua Periode" : `${start_date} s.d ${end_date}`;
+    const filename = `rekap-muzaqi-${isAll ? "semua" : `${start_date}_sd_${end_date}`}`;
+
+    if (fmt === "PDF") {
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `inline; filename="${filename}.pdf"`);
+      const doc = new PDFDocument({ margin: 50, size: "A4" });
+      doc.pipe(res);
+
+      let totalJiwa = 0;
+      let totalUangZakat = 0;
+      let totalInfaq = 0;
+      let totalBerasKg = 0;
+
+      transaksi.forEach((t) => {
+        totalJiwa += t.jumlah_jiwa ?? 0;
+        totalUangZakat += Number(t.nominal_zakat) || 0;
+        totalInfaq += Number(t.nominal_infaq) || 0;
+        totalBerasKg += Number(t.total_beras_kg) || 0;
+      });
+
+      // Top browser-like print header
+      const now = new Date();
+      const printDateStr = now.toLocaleDateString("en-US", { year: "2-digit", month: "numeric", day: "numeric" }) + ", " + now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+      doc.fontSize(8).font("Helvetica").fillColor("black");
+      doc.text(printDateStr, 50, 20, { align: "left" });
+      doc.text("Rekap Muzaqi", 50, 20, { width: 500, align: "center" });
+
+      doc.y = 50; 
+
+      doc.fontSize(18).font("Helvetica-Bold").fillColor("#1e293b").text("Rekap Muzaqi", 50, 50, { align: "left" });
+      doc.moveDown(0.2);
+      doc.fontSize(12).font("Helvetica").fillColor("#64748b").text(`Periode: ${periodeDisplay}`, { align: "left" });
+      doc.moveDown(1.5);
+
+      // Summary Stats
+      doc.fontSize(11).font("Helvetica").fillColor("#334155");
+      const summaryY = doc.y;
+      doc.text(`Total Transaksi: `, 50, summaryY, { continued: true }).font("Helvetica-Bold").text(`${transaksi.length}`);
+      doc.font("Helvetica").text(`Total Jiwa: `, 300, summaryY, { continued: true }).font("Helvetica-Bold").text(`${totalJiwa}`);
+      
+      const summaryY2 = summaryY + 20;
+      doc.font("Helvetica").text(`Total Beras: `, 50, summaryY2, { continued: true }).font("Helvetica-Bold").text(`${totalBerasKg.toFixed(2)} kg`);
+      doc.font("Helvetica").text(`Total Uang Zakat: `, 300, summaryY2, { continued: true }).font("Helvetica-Bold").text(`${formatCurrencyId(totalUangZakat)}`);
+      
+      const summaryY3 = summaryY2 + 20;
+      doc.font("Helvetica").text(`Total Infaq: `, 50, summaryY3, { continued: true }).font("Helvetica-Bold").text(`${formatCurrencyId(totalInfaq)}`);
+      
+      doc.y = summaryY3 + 30;
+
+      // Table Header Setup
+      const headers = ["No", "Nama KK", "Alamat Muzaqi", "Jiwa", "Jenis", "Nominal Zakat", "Infaq"];
+      const colWidths = [25, 110, 110, 40, 45, 85, 85];
+      const startX = 50;
+      let currentY = doc.y;
+
+      const drawRow = (rowData: string[], isHeader = false) => {
+        doc.font(isHeader ? "Helvetica-Bold" : "Helvetica")
+           .fillColor(isHeader ? "#1e293b" : "#475569")
+           .fontSize(9);
+        
+        const rowHeight = 22; 
+
+        if (currentY + rowHeight > doc.page.height - 50) {
+          doc.addPage();
+          currentY = 50;
+        }
+
+        let currentX = startX;
+        const rowY = currentY; // Freeze Y coordinate for this entire row
+
+        rowData.forEach((text, i) => {
+          doc.text(text, currentX + 4, rowY + 6, { width: colWidths[i] - 8, align: "left" });
+          doc.rect(currentX, rowY, colWidths[i], rowHeight).strokeColor("#cbd5e1").lineWidth(0.5).stroke();
+          currentX += colWidths[i];
+        });
+        currentY += rowHeight;
+      };
+
+      // Draw Headers
+      drawRow(headers, true);
+
+      // Draw Data Rows
+      transaksi.forEach((t, idx) => {
+        const jenis = t.jenis_bayar === "UANG" ? "Uang" : "Beras";
+        let nominalZakat = formatCurrencyId(Number(t.nominal_zakat) || 0);
+        if (t.jenis_bayar === "BERAS") {
+          nominalZakat = `${Number(t.total_beras_kg).toFixed(2)} kg`; // using comma instead of formatCurrency if needed
+        }
+        drawRow([
+          String(idx + 1),
+          t.nama_kk || "-",
+          t.alamat_muzaqi || "-",
+          String(t.jumlah_jiwa || 0),
+          jenis,
+          nominalZakat,
+          formatCurrencyId(Number(t.nominal_infaq) || 0),
+        ], false);
+      });
+
+      doc.end();
+      return;
+    }
+
+    // Default: XLSX
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = "RWManage";
+    const sheet = workbook.addWorksheet("Rekap Muzaqi");
+    sheet.columns = [
+      { header: "No", key: "no", width: 5 },
+      { header: "Kode Unik", key: "kode_unik", width: 28 },
+      { header: "Nama KK", key: "nama_kk", width: 24 },
+      { header: "Alamat Muzaqi", key: "alamat_muzaqi", width: 22 },
+      { header: "Jiwa", key: "jumlah_jiwa", width: 8 },
+      { header: "Jenis", key: "jenis_bayar", width: 8 },
+      { header: "Nominal Zakat", key: "nominal_zakat", width: 18 },
+      { header: "Infaq", key: "nominal_infaq", width: 18 },
+      { header: "Beras (kg)", key: "total_beras_kg", width: 12 },
+      { header: "Waktu", key: "waktu_transaksi", width: 22 },
+    ];
+    sheet.addRows(
+      transaksi.map((item, idx) => ({
+        no: idx + 1,
+        kode_unik: item.kode_unik,
+        nama_kk: item.nama_kk,
+        alamat_muzaqi: item.alamat_muzaqi,
+        jumlah_jiwa: item.jumlah_jiwa,
+        jenis_bayar: item.jenis_bayar,
+        nominal_zakat: Number(item.nominal_zakat),
+        nominal_infaq: Number(item.nominal_infaq),
+        total_beras_kg: Number(item.total_beras_kg),
+        waktu_transaksi: new Date(item.waktu_transaksi).toLocaleString("id-ID"),
+      }))
+    );
+    sheet.getRow(1).font = { bold: true };
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}.xlsx"`);
+    res.send(Buffer.from(buffer));
+  } catch {
+    res.status(500).json({ success: false, message: "Terjadi kesalahan saat mengekspor rekap muzaqi." });
+  }
+};
+
+// ─── Export Rekap Distribusi ──────────────────────────────────────────────────
+
+export const exportRekapDistribusi = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { masjid_id, start_date, end_date, format } = req.query as ExportZisQuery;
+
+    const authorizedMasjidId = await getAuthorizedMasjidId(prisma, req, masjid_id);
+    if (!authorizedMasjidId) {
+      res.status(403).json({ success: false, message: "Akses ditolak." });
+      return;
+    }
+
+    const [masjid, pengaturan] = await Promise.all([
+      prisma.masjid.findUnique({
+        where: { id: authorizedMasjidId },
+        select: { nama_masjid: true },
+      }),
+      prisma.pengaturanZis.findUnique({
+        where: { masjid_id: authorizedMasjidId },
+        select: {
+          persen_fakir: true,
+          persen_amil: true,
+          persen_fisabilillah: true,
+          persen_lainnya: true,
+        },
+      }),
+    ]);
+
+    if (!pengaturan) {
+      res.status(404).json({ success: false, message: "Pengaturan ZIS belum tersedia." });
+      return;
+    }
+
+    const { startParsed, endParsed } = parseDateRange(start_date, end_date);
+
+    const aggregate = await prisma.transaksiZis.aggregate({
+      where: {
+        masjid_id: authorizedMasjidId,
+        ...(startParsed || endParsed
+          ? {
+              waktu_transaksi: {
+                ...(startParsed ? { gte: startParsed } : {}),
+                ...(endParsed ? { lte: endParsed } : {}),
+              },
+            }
+          : {}),
+      },
+      _sum: {
+        nominal_zakat: true,
+        nominal_infaq: true,
+        total_beras_kg: true,
+        jumlah_jiwa: true,
+      },
+      _count: { id: true },
+    });
+
+    const totalZakat = roundTo2(decimalToNumber(aggregate._sum.nominal_zakat));
+    const totalInfaq = roundTo2(decimalToNumber(aggregate._sum.nominal_infaq));
+    const totalBeras = roundTo2(decimalToNumber(aggregate._sum.total_beras_kg));
+    const totalDana = totalZakat + totalInfaq;
+
+    const distribusiDana = calculateDistribution(pengaturan, totalDana);
+    const distribusiBeras = calculateDistribution(pengaturan, totalBeras);
+
+    const periode = start_date && end_date ? `${start_date} s.d. ${end_date}` : "Semua Periode";
+    const filename = `rekap-distribusi-${start_date && end_date ? `${start_date}_sd_${end_date}` : "semua"}`;
+
+    const rows: Array<[string, string]> = [
+      ["Masjid", masjid?.nama_masjid ?? "-"],
+      ["Periode", periode],
+      ["Dicetak", new Date().toLocaleString("id-ID")],
+      ["", ""],
+      ["── PENERIMAAN ──", ""],
+      ["Total Transaksi (KK)", String(aggregate._count.id)],
+      ["Total Jiwa", String(aggregate._sum.jumlah_jiwa ?? 0)],
+      ["Total Uang Zakat", formatCurrencyId(totalZakat)],
+      ["Total Infaq", formatCurrencyId(totalInfaq)],
+      ["Total Dana Distribusi", formatCurrencyId(totalDana)],
+      ["Total Beras", `${totalBeras.toFixed(2)} kg`],
+      ["", ""],
+      ["── DISTRIBUSI DANA ──", ""],
+      [`Fakir Miskin (${pengaturan.persen_fakir}%)`, formatCurrencyId(distribusiDana.fakir)],
+      [`Amil (${pengaturan.persen_amil}%)`, formatCurrencyId(distribusiDana.amil)],
+      [`Fisabilillah (${pengaturan.persen_fisabilillah}%)`, formatCurrencyId(distribusiDana.fisabilillah)],
+      [`Lainnya (${pengaturan.persen_lainnya}%)`, formatCurrencyId(distribusiDana.lainnya)],
+      ["", ""],
+      ["── DISTRIBUSI BERAS ──", ""],
+      [`Fakir Miskin (${pengaturan.persen_fakir}%)`, `${distribusiBeras.fakir.toFixed(2)} kg`],
+      [`Amil (${pengaturan.persen_amil}%)`, `${distribusiBeras.amil.toFixed(2)} kg`],
+      [`Fisabilillah (${pengaturan.persen_fisabilillah}%)`, `${distribusiBeras.fisabilillah.toFixed(2)} kg`],
+      [`Lainnya (${pengaturan.persen_lainnya}%)`, `${distribusiBeras.lainnya.toFixed(2)} kg`],
+    ];
+
+    const fmt = String(format ?? "XLSX").toUpperCase();
+
+    if (fmt === "PDF") {
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `inline; filename="${filename}.pdf"`);
+      const doc = new PDFDocument({ margin: 50, size: "A4" });
+      doc.pipe(res);
+
+      // Top browser-like print header
+      const now = new Date();
+      const printDateStr = now.toLocaleDateString("en-US", { year: "2-digit", month: "numeric", day: "numeric" }) + ", " + now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+      doc.fontSize(8).font("Helvetica").fillColor("black");
+      doc.text(printDateStr, 50, 20, { align: "left" });
+      doc.text("Rekap Distribusi", 50, 20, { width: 500, align: "center" });
+
+      doc.y = 50; // Reset Y for main content
+
+      doc.fontSize(18).font("Helvetica-Bold").fillColor("#1e293b").text("Rekap Distribusi Zakat", 50, 50, { align: "left" });
+      doc.moveDown(0.2);
+      doc.fontSize(12).font("Helvetica").fillColor("#64748b").text(`Periode: ${periode}`, { align: "left" });
+      doc.moveDown(1.5);
+
+      const drawTable = (
+        title: string,
+        headers: string[],
+        tableRows: string[][],
+        colWidths: number[],
+        titleAlign: "left" | "right" = "left"
+      ) => {
+        doc.fontSize(12).font("Helvetica-Bold").fillColor("#334155").text(title, 50, doc.y, { width: 500, align: titleAlign });
+        doc.moveDown(0.5);
+
+        const startX = 50;
+        let y = doc.y;
+
+        const drawRow = (rowData: string[], isHeader = false) => {
+          doc.font(isHeader ? "Helvetica-Bold" : "Helvetica")
+             .fillColor(isHeader ? "#1e293b" : "#334155")
+             .fontSize(10);
+          
+          const rowHeight = 24; 
+
+          if (y + rowHeight > doc.page.height - 50) {
+            doc.addPage();
+            y = 50;
+          }
+
+          let currentX = startX;
+          rowData.forEach((text, i) => {
+            doc.text(text, currentX + 8, y + 7, { width: colWidths[i] - 16, align: "left" });
+            doc.rect(currentX, y, colWidths[i], rowHeight).strokeColor("#cbd5e1").lineWidth(0.5).stroke();
+            currentX += colWidths[i];
+          });
+          y += rowHeight;
+        };
+
+        if (headers.length > 0) {
+          drawRow(headers, true);
+        }
+        tableRows.forEach(row => drawRow(row, false));
+        doc.y = y + 20; 
+      };
+
+      // Table 1: Ringkasan Sumber Dana
+      drawTable(
+        "Ringkasan Sumber Dana",
+        [],
+        [
+          ["Total Zakat Uang", formatCurrencyId(totalZakat)],
+          ["Total Zakat Beras", `${totalBeras.toFixed(2)} kg`],
+          ["Total Infaq (Terpisah Kas Masjid)", formatCurrencyId(totalInfaq)]
+        ],
+        [300, 200],
+        "left"
+      );
+
+      // Table 2: Distribusi Zakat Uang
+      drawTable(
+        "Distribusi Zakat Uang",
+        ["Asnaf", "Persentase", "Nominal"],
+        [
+          ["Fakir Miskin", `${pengaturan.persen_fakir}%`, formatCurrencyId(distribusiDana.fakir)],
+          ["Amil", `${pengaturan.persen_amil}%`, formatCurrencyId(distribusiDana.amil)],
+          ["Fisabilillah", `${pengaturan.persen_fisabilillah}%`, formatCurrencyId(distribusiDana.fisabilillah)],
+          ["Lainnya", `${pengaturan.persen_lainnya}%`, formatCurrencyId(distribusiDana.lainnya)]
+        ],
+        [200, 100, 200],
+        "left"
+      );
+
+      // Table 3: Distribusi Zakat Beras
+      drawTable(
+        "Distribusi Zakat Beras",
+        ["Asnaf", "Persentase", "Nominal"],
+        [
+          ["Fakir Miskin", `${pengaturan.persen_fakir}%`, `${distribusiBeras.fakir.toFixed(2)} kg`],
+          ["Amil", `${pengaturan.persen_amil}%`, `${distribusiBeras.amil.toFixed(2)} kg`],
+          ["Fisabilillah", `${pengaturan.persen_fisabilillah}%`, `${distribusiBeras.fisabilillah.toFixed(2)} kg`],
+          ["Lainnya", `${pengaturan.persen_lainnya}%`, `${distribusiBeras.lainnya.toFixed(2)} kg`]
+        ],
+        [200, 100, 200],
+        "left"
+      );
+
+      doc.end();
+      return;
+    }
+
+    // XLSX
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = "RWManage";
+    const sheet = workbook.addWorksheet("Distribusi");
+    sheet.getColumn(1).width = 34;
+    sheet.getColumn(2).width = 24;
+    rows.forEach(([label, value]) => {
+      const row = sheet.addRow([label, value]);
+      if (label.startsWith("──")) row.font = { bold: true };
+    });
+    const buffer = await workbook.xlsx.writeBuffer();
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}.xlsx"`);
+    res.send(Buffer.from(buffer));
+  } catch {
+    res.status(500).json({ success: false, message: "Terjadi kesalahan saat mengekspor rekap distribusi." });
+  }
+};
+
+// ─── Recent transaksi (kept for backward compat) ──────────────────────────────
+
+export const getRecentTransaksiZis = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { masjid_id } = req.query as { masjid_id?: string };
+
+    const authorizedMasjidId = await getAuthorizedMasjidId(prisma, req, masjid_id);
+    if (!authorizedMasjidId) {
+      res.status(403).json({
+        success: false,
+        message: "Anda tidak memiliki akses ke masjid ini atau belum terdaftar sebagai pengurus masjid.",
+      });
+      return;
+    }
+
+    const transaksi = await prisma.transaksiZis.findMany({
+      where: { masjid_id: authorizedMasjidId },
+      orderBy: { waktu_transaksi: "desc" },
+      take: 10,
+      select: {
+        id: true,
+        kode_unik: true,
+        nama_kk: true,
+        alamat_muzaqi: true,
+        jumlah_jiwa: true,
+        jenis_bayar: true,
+        nominal_zakat: true,
+        nominal_infaq: true,
+        total_beras_kg: true,
+        waktu_transaksi: true,
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Riwayat transaksi ZIS berhasil diambil.",
+      data: transaksi,
+    });
+  } catch {
+    res.status(500).json({
+      success: false,
+      message: "Terjadi kesalahan saat mengambil riwayat transaksi ZIS.",
+    });
+  }
+};
+
+// ─── Export Kwitansi ──────────────────────────────────────────────────────────
+
+export const exportKwitansiZis = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { transaksi_id } = req.params as { transaksi_id: string };
+
+    const transaksi = await prisma.transaksiZis.findUnique({
+      where: { id: transaksi_id },
+      include: { masjid: true },
+    });
+
+    if (!transaksi) {
+      res.status(404).json({ success: false, message: "Transaksi tidak ditemukan." });
+      return;
+    }
+
+    const authorizedMasjidId = await getAuthorizedMasjidId(prisma, req, transaksi.masjid_id);
+    if (!authorizedMasjidId || authorizedMasjidId !== transaksi.masjid_id) {
+      res.status(403).json({ success: false, message: "Akses ditolak." });
+      return;
+    }
+
+    const tglParsed = new Date(transaksi.waktu_transaksi);
+    const dateFormatted = `${tglParsed.getDate()}/${tglParsed.getMonth() + 1}/${tglParsed.getFullYear()}, ${tglParsed.getHours().toString().padStart(2, '0')}.${tglParsed.getMinutes().toString().padStart(2, '0')}.${tglParsed.getSeconds().toString().padStart(2, '0')}`;
+
+    const filename = `Kwitansi-${transaksi.kode_unik}`;
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `inline; filename="${filename}.pdf"`);
+
+    const doc = new PDFDocument({ margin: 40, size: "A4" });
+    doc.pipe(res);
+
+    // Draw frame
+    doc.roundedRect(40, 40, doc.page.width - 80, 450, 10).strokeColor("#15803d").lineWidth(1.5).stroke();
+
+    // Top left text
+    doc.fillColor("#94a3b8").fontSize(22).font("Helvetica-Bold").text("ZIS", 60, 65);
+
+    // Top right headers
+    doc.fillColor("#15803d").fontSize(18).text("Kwitansi Zakat & Infaq", 60, 60, { width: doc.page.width - 120, align: "right" });
+    doc.fillColor("#64748b").fontSize(10).font("Helvetica").text(`${transaksi.masjid.nama_masjid || "Masjid"} • Bukti Pembayaran Resmi`, 60, 80, { width: doc.page.width - 120, align: "right" });
+
+    // Separator Line
+    doc.moveTo(60, 105).lineTo(doc.page.width - 60, 105).strokeColor("#dcfce3").lineWidth(1.5).stroke();
+
+    // Kv details
+    doc.fillColor("#475569").fontSize(10);
+    doc.font("Helvetica").text("No. Kwitansi: ", 60, 125, { continued: true }).font("Helvetica-Bold").fillColor("#1e293b").text(transaksi.kode_unik);
+    doc.font("Helvetica").fillColor("#475569").text(`Tanggal: ${dateFormatted}`, 60, 140);
+
+    // Transaksi details array
+    let labelY = 175;
+    const drawKwitansiRow = (label: string, value: string) => {
+      doc.font("Helvetica").fillColor("#64748b").fontSize(11).text(label, 60, labelY);
+      doc.font("Helvetica-Bold").fillColor("#1e293b").text(value, 230, labelY);
+      // Dotted horizontal line separator
+      doc.moveTo(60, labelY + 15).lineTo(doc.page.width - 60, labelY + 15).strokeColor("#cbd5e1").lineWidth(0.5).dash(2, { space: 2 }).stroke();
+      doc.undash();
+      labelY += 25;
+    };
+
+    drawKwitansiRow("Nama Kepala Keluarga", transaksi.nama_kk || "-");
+    drawKwitansiRow("Alamat Muzaqi", transaksi.alamat_muzaqi || "-");
+    drawKwitansiRow("Jumlah Jiwa", `${transaksi.jumlah_jiwa || 0} jiwa`);
+    
+    const jenis = transaksi.jenis_bayar === "UANG" ? "Uang" : "Beras";
+    drawKwitansiRow("Jenis Pembayaran", jenis);
+    
+    let nominZakat = formatCurrencyId(Number(transaksi.nominal_zakat) || 0);
+    if (transaksi.jenis_bayar === "BERAS") nominZakat = `${Number(transaksi.total_beras_kg).toFixed(2)} kg`;
+    drawKwitansiRow("Nominal Zakat", nominZakat);
+    
+    drawKwitansiRow("Nominal Infaq", formatCurrencyId(Number(transaksi.nominal_infaq) || 0));
+
+    // Signatures
+    const signY = labelY + 30;
+    doc.fillColor("#1e293b").font("Helvetica").fontSize(11).text("Petugas Zakat", 380, signY, { width: 140, align: "center" });
+
+    // LUNAS Stamp
+    const stampX = 450;
+    const stampY = signY + 60;
+    doc.circle(stampX, stampY, 35).strokeColor("#ef4444").lineWidth(2).stroke();
+    doc.save();
+    doc.translate(stampX, stampY);
+    doc.rotate(-15);
+    doc.fillColor("#ef4444").font("Helvetica-Bold").fontSize(14).text("LUNAS", -25, -6);
+    doc.restore();
+
+    // Signature line
+    doc.moveTo(370, signY + 110).lineTo(530, signY + 110).strokeColor("#94a3b8").lineWidth(1).stroke();
+    doc.fillColor("#1e293b").font("Helvetica-Bold").text("(__________________)", 370, signY + 115, { width: 160, align: "center" });
+
+    // Footer note
+    doc.fillColor("#94a3b8").font("Helvetica").fontSize(8).text("Kwitansi ini dicetak otomatis dari sistem pengelola zakat masjid.", 60, signY + 115);
+
+    doc.end();
+  } catch (err) {
+    res.status(500).json({ success: false, message: "Gagal mengekspor kwitansi" });
+  }
 };

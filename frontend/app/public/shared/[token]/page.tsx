@@ -102,16 +102,32 @@ export default function PublicSharedDashboardPage() {
     fetchData().catch(() => undefined);
   }, [token]);
 
-  const chartItems = useMemo(() => {
+  const kasChartItems = useMemo(() => {
     if (!data) {
       return [];
     }
 
-    return data.payload.series.map((item) => ({
+    return data.payload.series
+      .filter((item) => item.kas_masuk !== 0 || item.kas_keluar !== 0)
+      .map((item) => ({
+        label: `Bulan ${item.month}`,
+        value: item.kas_saldo,
+        hint: formatCurrency(item.kas_saldo),
+      }));
+  }, [data]);
+
+  const zisChartItems = useMemo(() => {
+    if (!data || data.payload.scope !== "MASJID") {
+      return [];
+    }
+
+    return data.payload.series
+      .filter((item) => item.zis_uang_zakat !== 0 || item.zis_uang_infaq !== 0)
+      .map((item) => ({
       label: `Bulan ${item.month}`,
-      value: item.kas_saldo,
-      hint: formatCurrency(item.kas_saldo),
-    }));
+        value: item.zis_uang_zakat + item.zis_uang_infaq,
+        hint: formatCurrency(item.zis_uang_zakat + item.zis_uang_infaq),
+      }));
   }, [data]);
 
   return (
@@ -171,11 +187,21 @@ export default function PublicSharedDashboardPage() {
               ))}
             </div>
 
-            <MiniBarChart
-              title="Trend Saldo Kas"
-              description="Saldo kas kumulatif berdasarkan agregat bulanan"
-              items={chartItems}
-            />
+            <div className="grid gap-4 lg:grid-cols-2">
+              <MiniBarChart
+                title="Trend Saldo Kas"
+                description="Hanya bulan dengan transaksi kas yang ditampilkan."
+                items={kasChartItems}
+              />
+
+              {data.payload.scope === "MASJID" ? (
+                <MiniBarChart
+                  title="Trend Penerimaan ZIS"
+                  description="Hanya bulan dengan penerimaan zakat atau infaq yang ditampilkan."
+                  items={zisChartItems}
+                />
+              ) : null}
+            </div>
           </>
         ) : null}
 

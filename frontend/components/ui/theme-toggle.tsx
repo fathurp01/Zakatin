@@ -1,9 +1,8 @@
 "use client";
 
-import { useTheme } from "next-themes";
 import { Moon, Sun } from "lucide-react";
-import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
+import { useTheme } from "@/context/ThemeContext";
 
 interface ThemeToggleProps {
   className?: string;
@@ -15,19 +14,13 @@ interface ThemeToggleProps {
 }
 
 export function ThemeToggle({ className, variant = "icon" }: ThemeToggleProps) {
-  const { theme, setTheme, resolvedTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
-
-  // Avoid hydration mismatch
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  const { setTheme, resolvedTheme } = useTheme();
 
   const isDark = resolvedTheme === "dark";
 
   const toggle = () => setTheme(isDark ? "light" : "dark");
 
-  if (!mounted) {
+  if (!resolvedTheme) {
     // Placeholder saat SSR — sama ukurannya supaya layout tidak shift
     if (variant === "pill") {
       return (
@@ -53,7 +46,7 @@ export function ThemeToggle({ className, variant = "icon" }: ThemeToggleProps) {
         {/* Track (toggle switch visual) */}
         <span
           className={cn(
-            "relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full border-2 border-transparent",
+            "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full border-2 border-transparent",
             "transition-colors duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             isDark
               ? "bg-indigo-600"
@@ -70,7 +63,7 @@ export function ThemeToggle({ className, variant = "icon" }: ThemeToggleProps) {
         </span>
 
         {/* Icon + label */}
-        <span className="inline-flex size-8 flex-shrink-0 items-center justify-center rounded-xl border border-slate-200/60 bg-white dark:border-white/8 dark:bg-white/5">
+        <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-xl border border-slate-200/60 bg-white dark:border-white/8 dark:bg-white/5">
           {isDark ? (
             <Moon className="size-4 text-indigo-400" />
           ) : (

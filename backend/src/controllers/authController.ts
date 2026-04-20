@@ -18,6 +18,7 @@ interface RegisterBody {
 interface LoginBody {
   email?: string;
   password?: string;
+  role?: Role;
 }
 
 interface ApprovePengurusBody {
@@ -176,12 +177,20 @@ export const register = async (req: Request, res: Response): Promise<void> => {
 
 export const loginWithClient = async (client: typeof prisma, req: Request, res: Response): Promise<void> => {
   try {
-    const { email, password } = req.body as LoginBody;
+    const { email, password, role } = req.body as LoginBody;
 
     if (!email || !password) {
       res.status(400).json({
         success: false,
         message: "Email dan password wajib diisi.",
+      });
+      return;
+    }
+
+    if (role && role !== Role.RW && role !== Role.PENGURUS_MASJID) {
+      res.status(400).json({
+        success: false,
+        message: "Role login tidak valid.",
       });
       return;
     }
@@ -211,6 +220,14 @@ export const loginWithClient = async (client: typeof prisma, req: Request, res: 
       res.status(401).json({
         success: false,
         message: "Email atau password salah.",
+      });
+      return;
+    }
+
+    if (role && user.role !== role) {
+      res.status(403).json({
+        success: false,
+        message: "Akun tidak terdaftar untuk jenis login yang dipilih.",
       });
       return;
     }

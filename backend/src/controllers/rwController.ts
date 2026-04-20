@@ -1,4 +1,4 @@
-import { randomUUID } from "crypto";
+import { randomBytes } from "crypto";
 import { Request, Response } from "express";
 import { JenisTransaksi, Prisma, StatusIuran } from "@prisma/client";
 import { prisma } from "../lib/prisma";
@@ -61,10 +61,45 @@ interface UpdateKasRWBody {
   bukti_url?: string;
 }
 
-const generateKodeUnik = (prefix: "IUR" | "KAS"): string => {
-  const year = new Date().getFullYear();
-  const uuid = randomUUID().toUpperCase();
-  return `${prefix}-${year}-${uuid}`;
+const createKodeUnikCandidate = (prefix: "IUR" | "KAS", date: Date): string => {
+  const year2 = String(date.getFullYear()).slice(-2);
+  const month2 = String(date.getMonth() + 1).padStart(2, "0");
+  const suffix = randomBytes(3).toString("hex").toUpperCase();
+  return `${prefix}-${year2}${month2}-${suffix}`;
+};
+
+const generateKodeUnik = async (
+  client: typeof prisma,
+  prefix: "IUR" | "KAS"
+): Promise<string> => {
+  const now = new Date();
+
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    const candidate = createKodeUnikCandidate(prefix, now);
+
+    if (prefix === "IUR") {
+      const exists = await client.iuranWarga.findUnique({
+        where: { kode_unik: candidate },
+        select: { id: true },
+      });
+
+      if (!exists) {
+        return candidate;
+      }
+      continue;
+    }
+
+    const exists = await client.kasRW.findUnique({
+      where: { kode_unik: candidate },
+      select: { id: true },
+    });
+
+    if (!exists) {
+      return candidate;
+    }
+  }
+
+  throw new Error(`Gagal membuat kode unik ${prefix}.`);
 };
 
 const parsePositiveNumber = (
@@ -851,12 +886,15 @@ export const bayarIuran = async (req: Request, res: Response): Promise<void> => 
 
     const paymentDate = new Date();
     const updatedIuran = await prisma.$transaction(async (tx) => {
+      const kodeIuran = await generateKodeUnik(tx, "IUR");
+      const kodeKas = await generateKodeUnik(tx, "KAS");
+
       const updated = await tx.iuranWarga.update({
         where: { id: iuran_id },
         data: {
           status: StatusIuran.LUNAS,
           tanggal_bayar: paymentDate,
-          kode_unik: generateKodeUnik("IUR"),
+          kode_unik: kodeIuran,
         },
         select: {
           id: true,
@@ -877,7 +915,7 @@ export const bayarIuran = async (req: Request, res: Response): Promise<void> => 
           tanggal: paymentDate,
           keterangan: `Pembayaran iuran warga ${existingIuran.warga.nama_kk} bulan ${updated.bulan}/${updated.tahun}`,
           nominal: updated.nominal,
-          kode_unik: generateKodeUnik("KAS"),
+          kode_unik: kodeKas,
         },
       });
 
@@ -974,7 +1012,7 @@ export const createKasRW = async (req: Request, res: Response): Promise<void> =>
         keterangan,
         nominal: new Prisma.Decimal(nominalKas),
         bukti_url,
-        kode_unik: generateKodeUnik("KAS"),
+        kode_unik: await generateKodeUnik(prisma, "KAS"),
       },
       select: {
         id: true,

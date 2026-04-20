@@ -147,7 +147,9 @@ export default function MasjidReportPage() {
   };
 
   const chartItems = report
-    ? report.series.map((item) => ({
+    ? report.series
+        .filter((item) => item.kas_masuk !== 0 || item.kas_keluar !== 0)
+        .map((item) => ({
         label: item.label,
         value: item.kas_saldo,
         hint: formatCurrency(item.kas_saldo),
@@ -274,7 +276,7 @@ export default function MasjidReportPage() {
 
           <MiniBarChart
             title="Grafik Saldo Bulanan"
-            description="Setiap batang menunjukkan saldo kumulatif per bulan."
+            description="Hanya bulan dengan transaksi kas yang ditampilkan."
             items={chartItems}
           />
 
