@@ -12,6 +12,22 @@ interface CreateWargaBody {
 interface GetIuranWargaQuery {
   blok_wilayah_id?: string;
   tahun?: string;
+  bulan?: string;
+  status?: StatusIuran;
+}
+
+interface GetWargaListQuery {
+  blok_wilayah_id?: string;
+  search?: string;
+}
+
+interface WargaIdParams {
+  warga_id?: string;
+}
+
+interface UpdateWargaBody {
+  nama_kk?: string;
+  tarif_iuran_bulanan?: number | string;
 }
 
 interface BayarIuranBody {
@@ -182,12 +198,409 @@ export const createWarga = async (req: Request, res: Response): Promise<void> =>
   return createWargaWithClient(prisma, req, res);
 };
 
+export const getWargaList = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { blok_wilayah_id, search } = req.query as GetWargaListQuery;
+
+    if (!req.user?.id) {
+      res.status(401).json({
+        success: false,
+        message: "User belum terautentikasi.",
+      });
+      return;
+    }
+
+    const rwWilayah = await getRwWilayahByUserId(req.user.id);
+    if (!rwWilayah) {
+      res.status(403).json({
+        success: false,
+        message: "Wilayah RW untuk user login tidak ditemukan.",
+      });
+      return;
+    }
+
+    if (blok_wilayah_id) {
+      const blok = await prisma.blokWilayah.findUnique({
+        where: { id: blok_wilayah_id },
+        select: { id: true, wilayah_rw_id: true },
+      });
+
+      if (!blok) {
+        res.status(404).json({
+          success: false,
+          message: "Blok wilayah tidak ditemukan.",
+        });
+        return;
+      }
+
+      if (blok.wilayah_rw_id !== rwWilayah.id) {
+        res.status(403).json({
+          success: false,
+          message: "Akses ditolak. Blok wilayah ini tidak berada di RW Anda.",
+        });
+        return;
+      }
+    }
+
+    const normalizedSearch = search?.trim();
+
+    const wargaList = await prisma.warga.findMany({
+      where: {
+        deleted_at: null,
+        ...(blok_wilayah_id
+          ? {
+              blok_wilayah_id,
+            }
+          : {
+              blok_wilayah: {
+                wilayah_rw_id: rwWilayah.id,
+              },
+            }),
+        ...(normalizedSearch
+          ? {
+              nama_kk: {
+                contains: normalizedSearch,
+                mode: "insensitive",
+              },
+            }
+          : {}),
+      },
+      select: {
+        id: true,
+        nama_kk: true,
+        tarif_iuran_bulanan: true,
+        blok_wilayah_id: true,
+        blok_wilayah: {
+          select: {
+            nama_blok: true,
+            no_rt: true,
+          },
+        },
+      },
+      orderBy: { nama_kk: "asc" },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Data warga berhasil diambil.",
+      data: wargaList,
+    });
+  } catch {
+    res.status(500).json({
+      success: false,
+      message: "Terjadi kesalahan saat mengambil data warga.",
+    });
+  }
+};
+
+export const getWargaDetail = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { warga_id } = req.params as WargaIdParams;
+
+    if (!warga_id) {
+      res.status(400).json({
+        success: false,
+        message: "warga_id wajib diisi.",
+      });
+      return;
+    }
+
+    if (!req.user?.id) {
+      res.status(401).json({
+        success: false,
+        message: "User belum terautentikasi.",
+      });
+      return;
+    }
+
+    const rwWilayah = await getRwWilayahByUserId(req.user.id);
+    if (!rwWilayah) {
+      res.status(403).json({
+        success: false,
+        message: "Wilayah RW untuk user login tidak ditemukan.",
+      });
+      return;
+    }
+
+    const warga = await prisma.warga.findUnique({
+      where: { id: warga_id },
+      select: {
+        id: true,
+        nama_kk: true,
+        tarif_iuran_bulanan: true,
+        blok_wilayah_id: true,
+        deleted_at: true,
+        blok_wilayah: {
+          select: {
+            wilayah_rw_id: true,
+            nama_blok: true,
+            no_rt: true,
+          },
+        },
+      },
+    });
+
+    if (!warga || warga.deleted_at) {
+      res.status(404).json({
+        success: false,
+        message: "Data warga tidak ditemukan.",
+      });
+      return;
+    }
+
+    if (warga.blok_wilayah.wilayah_rw_id !== rwWilayah.id) {
+      res.status(403).json({
+        success: false,
+        message: "Akses ditolak. Data warga ini tidak berada di RW Anda.",
+      });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Detail warga berhasil diambil.",
+      data: {
+        id: warga.id,
+        nama_kk: warga.nama_kk,
+        tarif_iuran_bulanan: warga.tarif_iuran_bulanan,
+        blok_wilayah_id: warga.blok_wilayah_id,
+        blok_wilayah: {
+          nama_blok: warga.blok_wilayah.nama_blok,
+          no_rt: warga.blok_wilayah.no_rt,
+        },
+      },
+    });
+  } catch {
+    res.status(500).json({
+      success: false,
+      message: "Terjadi kesalahan saat mengambil detail warga.",
+    });
+  }
+};
+
+export const updateWarga = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { warga_id } = req.params as WargaIdParams;
+    const { nama_kk, tarif_iuran_bulanan } = req.body as UpdateWargaBody;
+
+    if (!warga_id) {
+      res.status(400).json({
+        success: false,
+        message: "warga_id wajib diisi.",
+      });
+      return;
+    }
+
+    if (!req.user?.id) {
+      res.status(401).json({
+        success: false,
+        message: "User belum terautentikasi.",
+      });
+      return;
+    }
+
+    if (nama_kk === undefined && tarif_iuran_bulanan === undefined) {
+      res.status(400).json({
+        success: false,
+        message: "Minimal satu field harus dikirim untuk update warga.",
+      });
+      return;
+    }
+
+    const rwWilayah = await getRwWilayahByUserId(req.user.id);
+    if (!rwWilayah) {
+      res.status(403).json({
+        success: false,
+        message: "Wilayah RW untuk user login tidak ditemukan.",
+      });
+      return;
+    }
+
+    const existingWarga = await prisma.warga.findUnique({
+      where: { id: warga_id },
+      select: {
+        id: true,
+        deleted_at: true,
+        blok_wilayah: {
+          select: {
+            wilayah_rw_id: true,
+          },
+        },
+      },
+    });
+
+    if (!existingWarga || existingWarga.deleted_at) {
+      res.status(404).json({
+        success: false,
+        message: "Data warga tidak ditemukan.",
+      });
+      return;
+    }
+
+    if (existingWarga.blok_wilayah.wilayah_rw_id !== rwWilayah.id) {
+      res.status(403).json({
+        success: false,
+        message: "Akses ditolak. Data warga ini tidak berada di RW Anda.",
+      });
+      return;
+    }
+
+    const dataToUpdate: {
+      nama_kk?: string;
+      tarif_iuran_bulanan?: Prisma.Decimal;
+      iuran_warga?: {
+        updateMany: {
+          where: {
+            status: StatusIuran;
+          };
+          data: {
+            nominal: Prisma.Decimal;
+          };
+        };
+      };
+    } = {};
+
+    if (nama_kk !== undefined) {
+      dataToUpdate.nama_kk = nama_kk.trim();
+    }
+
+    if (tarif_iuran_bulanan !== undefined) {
+      const parsedTarif = parsePositiveNumber(tarif_iuran_bulanan);
+      if (parsedTarif === null) {
+        res.status(400).json({
+          success: false,
+          message: "tarif_iuran_bulanan harus berupa angka lebih dari 0.",
+        });
+        return;
+      }
+
+      const decimalTarif = new Prisma.Decimal(parsedTarif);
+      dataToUpdate.tarif_iuran_bulanan = decimalTarif;
+      dataToUpdate.iuran_warga = {
+        updateMany: {
+          where: {
+            status: StatusIuran.BELUM,
+          },
+          data: {
+            nominal: decimalTarif,
+          },
+        },
+      };
+    }
+
+    const updatedWarga = await prisma.warga.update({
+      where: { id: warga_id },
+      data: dataToUpdate,
+      select: {
+        id: true,
+        nama_kk: true,
+        tarif_iuran_bulanan: true,
+        blok_wilayah_id: true,
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Data warga berhasil diperbarui.",
+      data: updatedWarga,
+    });
+  } catch {
+    res.status(500).json({
+      success: false,
+      message: "Terjadi kesalahan saat memperbarui warga.",
+    });
+  }
+};
+
+export const deleteWarga = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { warga_id } = req.params as WargaIdParams;
+
+    if (!warga_id) {
+      res.status(400).json({
+        success: false,
+        message: "warga_id wajib diisi.",
+      });
+      return;
+    }
+
+    if (!req.user?.id) {
+      res.status(401).json({
+        success: false,
+        message: "User belum terautentikasi.",
+      });
+      return;
+    }
+
+    const rwWilayah = await getRwWilayahByUserId(req.user.id);
+    if (!rwWilayah) {
+      res.status(403).json({
+        success: false,
+        message: "Wilayah RW untuk user login tidak ditemukan.",
+      });
+      return;
+    }
+
+    const existingWarga = await prisma.warga.findUnique({
+      where: { id: warga_id },
+      select: {
+        id: true,
+        deleted_at: true,
+        blok_wilayah: {
+          select: {
+            wilayah_rw_id: true,
+          },
+        },
+      },
+    });
+
+    if (!existingWarga || existingWarga.deleted_at) {
+      res.status(404).json({
+        success: false,
+        message: "Data warga tidak ditemukan.",
+      });
+      return;
+    }
+
+    if (existingWarga.blok_wilayah.wilayah_rw_id !== rwWilayah.id) {
+      res.status(403).json({
+        success: false,
+        message: "Akses ditolak. Data warga ini tidak berada di RW Anda.",
+      });
+      return;
+    }
+
+    const deletedWarga = await prisma.warga.update({
+      where: { id: warga_id },
+      data: {
+        deleted_at: new Date(),
+      },
+      select: {
+        id: true,
+        nama_kk: true,
+        deleted_at: true,
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Data warga berhasil dinonaktifkan.",
+      data: deletedWarga,
+    });
+  } catch {
+    res.status(500).json({
+      success: false,
+      message: "Terjadi kesalahan saat menghapus warga.",
+    });
+  }
+};
+
 export const getIuranWarga = async (
   req: Request,
   res: Response
 ): Promise<void> => {
   try {
-    const { blok_wilayah_id, tahun } = req.query as GetIuranWargaQuery;
+    const { blok_wilayah_id, tahun, bulan, status } = req.query as GetIuranWargaQuery;
 
     if (!blok_wilayah_id) {
       res.status(400).json({
@@ -244,14 +657,53 @@ export const getIuranWarga = async (
       return;
     }
 
+    const bulanInt = bulan ? Number(bulan) : undefined;
+    if (
+      bulanInt !== undefined &&
+      (!Number.isInteger(bulanInt) || bulanInt < 1 || bulanInt > 12)
+    ) {
+      res.status(400).json({
+        success: false,
+        message: "Parameter bulan tidak valid.",
+      });
+      return;
+    }
+
+    if (
+      status !== undefined &&
+      status !== StatusIuran.BELUM &&
+      status !== StatusIuran.LUNAS
+    ) {
+      res.status(400).json({
+        success: false,
+        message: "Parameter status hanya boleh BELUM atau LUNAS.",
+      });
+      return;
+    }
+
     const wargaList = await prisma.warga.findMany({
-      where: { blok_wilayah_id },
+      where: {
+        blok_wilayah_id,
+        deleted_at: null,
+      },
       select: {
         id: true,
         nama_kk: true,
         tarif_iuran_bulanan: true,
         iuran_warga: {
-          where: { tahun: tahunInt },
+          where: {
+            tahun: tahunInt,
+            ...(bulanInt
+              ? {
+                  bulan: bulanInt,
+                }
+              : {}),
+            ...(status
+              ? {
+                  status,
+                }
+              : {}),
+          },
           select: {
             id: true,
             bulan: true,
@@ -272,32 +724,37 @@ export const getIuranWarga = async (
         warga.iuran_warga.map((item) => [item.bulan, item])
       );
 
-      const iuran12Bulan = Array.from({ length: 12 }, (_, idx) => {
-        const bulan = idx + 1;
-        const found = iuranByMonth.get(bulan);
+      const bulanSource = bulanInt ? [bulanInt] : Array.from({ length: 12 }, (_, idx) => idx + 1);
+
+      const iuranBySelection = bulanSource.map((bulanItem) => {
+        const found = iuranByMonth.get(bulanItem);
 
         if (found) {
           return found;
         }
 
+        if (status === StatusIuran.LUNAS) {
+          return null;
+        }
+
         return {
           id: null,
-          bulan,
+          bulan: bulanItem,
           tahun: tahunInt,
           nominal: warga.tarif_iuran_bulanan,
           status: StatusIuran.BELUM,
           kode_unik: null,
           tanggal_bayar: null,
         };
-      });
+      }).filter((item): item is NonNullable<typeof item> => Boolean(item));
 
       return {
         id: warga.id,
         nama_kk: warga.nama_kk,
         tarif_iuran_bulanan: warga.tarif_iuran_bulanan,
-        iuran: iuran12Bulan,
+        iuran: iuranBySelection,
       };
-    });
+    }).filter((item) => item.iuran.length > 0 || status !== StatusIuran.LUNAS);
 
     res.status(200).json({
       success: true,
@@ -305,6 +762,8 @@ export const getIuranWarga = async (
       data: {
         blok_wilayah_id,
         tahun: tahunInt,
+        bulan: bulanInt ?? null,
+        status: status ?? null,
         warga: data,
       },
     });
@@ -349,10 +808,13 @@ export const bayarIuran = async (req: Request, res: Response): Promise<void> => 
       where: { id: iuran_id },
       select: {
         id: true,
+        bulan: true,
         tahun: true,
+        nominal: true,
         status: true,
         warga: {
           select: {
+            nama_kk: true,
             blok_wilayah: {
               select: {
                 wilayah_rw_id: true,
@@ -387,23 +849,39 @@ export const bayarIuran = async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
-    const updatedIuran = await prisma.iuranWarga.update({
-      where: { id: iuran_id },
-      data: {
-        status: StatusIuran.LUNAS,
-        tanggal_bayar: new Date(),
-        kode_unik: generateKodeUnik("IUR"),
-      },
-      select: {
-        id: true,
-        warga_id: true,
-        bulan: true,
-        tahun: true,
-        nominal: true,
-        status: true,
-        kode_unik: true,
-        tanggal_bayar: true,
-      },
+    const paymentDate = new Date();
+    const updatedIuran = await prisma.$transaction(async (tx) => {
+      const updated = await tx.iuranWarga.update({
+        where: { id: iuran_id },
+        data: {
+          status: StatusIuran.LUNAS,
+          tanggal_bayar: paymentDate,
+          kode_unik: generateKodeUnik("IUR"),
+        },
+        select: {
+          id: true,
+          warga_id: true,
+          bulan: true,
+          tahun: true,
+          nominal: true,
+          status: true,
+          kode_unik: true,
+          tanggal_bayar: true,
+        },
+      });
+
+      await tx.kasRW.create({
+        data: {
+          wilayah_rw_id: rwWilayah.id,
+          jenis_transaksi: JenisTransaksi.MASUK,
+          tanggal: paymentDate,
+          keterangan: `Pembayaran iuran warga ${existingIuran.warga.nama_kk} bulan ${updated.bulan}/${updated.tahun}`,
+          nominal: updated.nominal,
+          kode_unik: generateKodeUnik("KAS"),
+        },
+      });
+
+      return updated;
     });
 
     res.status(200).json({

@@ -9,16 +9,41 @@ import {
   bayarIuran,
   createKasRW,
   createWarga,
+  deleteWarga,
   deleteKasRW,
   getBlokWilayah,
   getKasRW,
   getIuranWarga,
+  getWargaDetail,
+  getWargaList,
+  updateWarga,
   updateKasRW,
 } from "../controllers/rwController";
 import {
   createTransaksiZis,
   getDashboardZis,
 } from "../controllers/zisController";
+import {
+  exportMasjidReport,
+  exportRwReport,
+  getMasjidReport,
+  getRwReport,
+} from "../controllers/reportController";
+import {
+  createKasMasjid,
+  deleteKasMasjid,
+  getKasMasjid,
+  updateKasMasjid,
+} from "../controllers/kasMasjidController";
+import {
+  createMasjidShareLink,
+  createRwShareLink,
+  getPublicSharedDashboard,
+  listMasjidShareLinks,
+  listRwShareLinks,
+  revokeMasjidShareLink,
+  revokeRwShareLink,
+} from "../controllers/shareLinkController";
 import { cekKodeUnik, getMasjidList } from "../controllers/publicController";
 import {
   checkApproval,
@@ -41,17 +66,29 @@ import {
   bayarIuranSchema,
   cekKodeUnikParamsSchema,
   cekKodeUnikQuerySchema,
+  createShareLinkSchema,
+  createKasMasjidSchema,
   createKasRWSchema,
   createTransaksiZisSchema,
   createWargaSchema,
   getDashboardZisQuerySchema,
+  exportReportQuerySchema,
+  getKasMasjidQuerySchema,
   getIuranWargaQuerySchema,
   getKasRWQuerySchema,
+  reportMasjidQuerySchema,
+  reportRwQuerySchema,
+  shareLinkTokenParamsSchema,
+  getWargaListQuerySchema,
   kasRWParamsSchema,
+  kasMasjidParamsSchema,
   listPendingPengurusQuerySchema,
   loginSchema,
   masjidListQuerySchema,
   registerSchema,
+  updateWargaSchema,
+  updateKasMasjidSchema,
+  wargaParamsSchema,
   updateKasRWSchema,
 } from "../validation/schemas";
 
@@ -86,6 +123,43 @@ router.post(
   checkApproval,
   validateBody(createWargaSchema),
   createWarga
+);
+router.get(
+  "/rw/warga",
+  rwActionRateLimit,
+  verifyToken,
+  checkRole(["RW"]),
+  checkApproval,
+  validateQuery(getWargaListQuerySchema),
+  getWargaList
+);
+router.get(
+  "/rw/warga/:warga_id",
+  rwActionRateLimit,
+  verifyToken,
+  checkRole(["RW"]),
+  checkApproval,
+  validateParams(wargaParamsSchema),
+  getWargaDetail
+);
+router.patch(
+  "/rw/warga/:warga_id",
+  rwActionRateLimit,
+  verifyToken,
+  checkRole(["RW"]),
+  checkApproval,
+  validateParams(wargaParamsSchema),
+  validateBody(updateWargaSchema),
+  updateWarga
+);
+router.delete(
+  "/rw/warga/:warga_id",
+  rwActionRateLimit,
+  verifyToken,
+  checkRole(["RW"]),
+  checkApproval,
+  validateParams(wargaParamsSchema),
+  deleteWarga
 );
 router.get(
   "/rw/blok-wilayah",
@@ -131,6 +205,50 @@ router.get(
   validateQuery(getKasRWQuerySchema),
   getKasRW
 );
+router.get(
+  "/rw/report",
+  rwActionRateLimit,
+  verifyToken,
+  checkRole(["RW"]),
+  checkApproval,
+  validateQuery(reportRwQuerySchema),
+  getRwReport
+);
+router.get(
+  "/rw/report/export",
+  rwActionRateLimit,
+  verifyToken,
+  checkRole(["RW"]),
+  checkApproval,
+  validateQuery(exportReportQuerySchema),
+  exportRwReport
+);
+router.post(
+  "/rw/share-links",
+  rwActionRateLimit,
+  verifyToken,
+  checkRole(["RW"]),
+  checkApproval,
+  validateBody(createShareLinkSchema),
+  createRwShareLink
+);
+router.get(
+  "/rw/share-links",
+  rwActionRateLimit,
+  verifyToken,
+  checkRole(["RW"]),
+  checkApproval,
+  listRwShareLinks
+);
+router.patch(
+  "/rw/share-links/:token/revoke",
+  rwActionRateLimit,
+  verifyToken,
+  checkRole(["RW"]),
+  checkApproval,
+  validateParams(shareLinkTokenParamsSchema),
+  revokeRwShareLink
+);
 router.patch(
   "/rw/kas/:kas_id",
   rwActionRateLimit,
@@ -169,6 +287,88 @@ router.get(
   validateQuery(getDashboardZisQuerySchema),
   getDashboardZis
 );
+router.get(
+  "/masjid/report",
+  zisActionRateLimit,
+  verifyToken,
+  checkRole(["PENGURUS_MASJID"]),
+  checkApproval,
+  validateQuery(reportMasjidQuerySchema),
+  getMasjidReport
+);
+router.get(
+  "/masjid/report/export",
+  zisActionRateLimit,
+  verifyToken,
+  checkRole(["PENGURUS_MASJID"]),
+  checkApproval,
+  validateQuery(exportReportQuerySchema),
+  exportMasjidReport
+);
+router.post(
+  "/masjid/share-links",
+  zisActionRateLimit,
+  verifyToken,
+  checkRole(["PENGURUS_MASJID"]),
+  checkApproval,
+  validateBody(createShareLinkSchema),
+  createMasjidShareLink
+);
+router.get(
+  "/masjid/share-links",
+  zisActionRateLimit,
+  verifyToken,
+  checkRole(["PENGURUS_MASJID"]),
+  checkApproval,
+  listMasjidShareLinks
+);
+router.patch(
+  "/masjid/share-links/:token/revoke",
+  zisActionRateLimit,
+  verifyToken,
+  checkRole(["PENGURUS_MASJID"]),
+  checkApproval,
+  validateParams(shareLinkTokenParamsSchema),
+  revokeMasjidShareLink
+);
+
+router.post(
+  "/masjid/kas",
+  zisActionRateLimit,
+  verifyToken,
+  checkRole(["PENGURUS_MASJID"]),
+  checkApproval,
+  validateBody(createKasMasjidSchema),
+  createKasMasjid
+);
+router.get(
+  "/masjid/kas",
+  zisActionRateLimit,
+  verifyToken,
+  checkRole(["PENGURUS_MASJID"]),
+  checkApproval,
+  validateQuery(getKasMasjidQuerySchema),
+  getKasMasjid
+);
+router.patch(
+  "/masjid/kas/:kas_id",
+  zisActionRateLimit,
+  verifyToken,
+  checkRole(["PENGURUS_MASJID"]),
+  checkApproval,
+  validateParams(kasMasjidParamsSchema),
+  validateBody(updateKasMasjidSchema),
+  updateKasMasjid
+);
+router.delete(
+  "/masjid/kas/:kas_id",
+  zisActionRateLimit,
+  verifyToken,
+  checkRole(["PENGURUS_MASJID"]),
+  checkApproval,
+  validateParams(kasMasjidParamsSchema),
+  deleteKasMasjid
+);
 
 router.get(
   "/public/masjid-list",
@@ -183,6 +383,12 @@ router.get(
   validateParams(cekKodeUnikParamsSchema),
   validateQuery(cekKodeUnikQuerySchema),
   cekKodeUnik
+);
+router.get(
+  "/public/shared/:token",
+  publicRateLimit,
+  validateParams(shareLinkTokenParamsSchema),
+  getPublicSharedDashboard
 );
 
 export default router;

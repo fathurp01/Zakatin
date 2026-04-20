@@ -38,6 +38,17 @@ const readTokenFromStorage = (): string | null => {
   }
 };
 
+const buildAuthHeaders = (): Record<string, string> => {
+  const headers: Record<string, string> = {};
+  const token = readTokenFromStorage();
+
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  return headers;
+};
+
 const mapValidationErrors = (issues: ValidationIssue[] | undefined): FieldErrors => {
   if (!issues || !Array.isArray(issues)) {
     return {};
@@ -114,4 +125,50 @@ export const getApiError = (error: unknown): ApiClientError => {
   }
 
   return normalizeApiError(error);
+};
+
+export const downloadApiFile = async (
+  path: string,
+  filename: string,
+  params?: Record<string, string | number | undefined>
+): Promise<void> => {
+  const baseUrl = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000/api").replace(/\/$/, "");
+  const url = new URL(`${baseUrl}${path.startsWith("/") ? path : `/${path}`}`);
+
+  if (params) {
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== "") {
+        url.searchParams.set(key, String(value));
+      }
+    });
+  }
+
+  const response = await fetch(url.toString(), {
+    method: "GET",
+    headers: {
+      ...buildAuthHeaders(),
+    },
+  });
+
+  if (!response.ok) {
+    const contentType = response.headers.get("content-type") ?? "";
+
+    if (contentType.includes("application/json")) {
+      const payload = (await response.json()) as ErrorEnvelope;
+      throw new Error(payload.message || "Gagal mengunduh file.");
+    }
+
+    const errorText = await response.text();
+    throw new Error(errorText || "Gagal mengunduh file.");
+  }
+
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(objectUrl);
 };

@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -48,10 +49,17 @@ export default function IuranGrid({
   residents,
   formatRupiah,
   onPay,
+  onUpdateResident,
+  onDeleteResident,
 }: {
   residents: WargaItem[];
   formatRupiah: (value: number | string) => string;
   onPay: (iuranId: string, nominal: number) => Promise<void>;
+  onUpdateResident: (
+    wargaId: string,
+    payload: { nama_kk?: string; tarif_iuran_bulanan?: number }
+  ) => Promise<void>;
+  onDeleteResident: (wargaId: string) => Promise<void>;
 }) {
   if (residents.length === 0) {
     return (
@@ -80,6 +88,8 @@ export default function IuranGrid({
           resident={resident}
           formatRupiah={formatRupiah}
           onPay={onPay}
+          onUpdateResident={onUpdateResident}
+          onDeleteResident={onDeleteResident}
         />
       ))}
     </div>
@@ -90,20 +100,67 @@ function WargaCard({
   resident,
   formatRupiah,
   onPay,
+  onUpdateResident,
+  onDeleteResident,
 }: {
   resident: WargaItem;
   formatRupiah: (value: number | string) => string;
   onPay: (iuranId: string, nominal: number) => Promise<void>;
+  onUpdateResident: (
+    wargaId: string,
+    payload: { nama_kk?: string; tarif_iuran_bulanan?: number }
+  ) => Promise<void>;
+  onDeleteResident: (wargaId: string) => Promise<void>;
 }) {
   const lunas = resident.iuran.filter((i) => i.status === "LUNAS").length;
   const total = resident.iuran.length;
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [namaKkEdit, setNamaKkEdit] = useState(resident.nama_kk);
+  const [tarifEdit, setTarifEdit] = useState(String(Number(resident.tarif_iuran_bulanan)));
+
+  const handleSaveEdit = async () => {
+    const namaTrimmed = namaKkEdit.trim();
+    const tarifParsed = Number(tarifEdit);
+
+    if (!namaTrimmed) {
+      return;
+    }
+
+    if (!Number.isFinite(tarifParsed) || tarifParsed <= 0) {
+      return;
+    }
+
+    setIsUpdating(true);
+    try {
+      await onUpdateResident(resident.id, {
+        nama_kk: namaTrimmed,
+        tarif_iuran_bulanan: tarifParsed,
+      });
+      setEditOpen(false);
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    setIsDeleting(true);
+    try {
+      await onDeleteResident(resident.id);
+      setDeleteOpen(false);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   return (
     <div className="rounded-3xl border-2 border-slate-200 dark:border-white/10 bg-white dark:bg-card shadow-md overflow-hidden">
       {/* Nama warga */}
       <div className="flex items-center justify-between gap-3 px-5 py-4 border-b-2 border-slate-100 dark:border-white/8">
         <div className="flex items-center gap-3">
-          <span className="inline-flex size-12 flex-shrink-0 items-center justify-center rounded-2xl bg-indigo-100 dark:bg-indigo-950/40 text-xl font-extrabold text-indigo-700 dark:text-indigo-300">
+          <span className="inline-flex size-12 shrink-0 items-center justify-center rounded-2xl bg-indigo-100 dark:bg-indigo-950/40 text-xl font-extrabold text-indigo-700 dark:text-indigo-300">
             {resident.nama_kk.charAt(0).toUpperCase()}
           </span>
           <div>
@@ -115,15 +172,34 @@ function WargaCard({
             </p>
           </div>
         </div>
-        {/* Progress badge */}
-        <div className={`flex-shrink-0 rounded-2xl px-3 py-1.5 text-sm font-bold ${
-          lunas === total
-            ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
-            : lunas > 0
-            ? "bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300"
-            : "bg-slate-100 text-slate-600 dark:bg-white/8 dark:text-muted-foreground"
-        }`}>
-          {lunas}/{total} Lunas
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            className="rounded-xl border border-slate-300 dark:border-white/15 px-3 py-1.5 text-xs font-semibold text-slate-600 dark:text-muted-foreground hover:bg-slate-50 dark:hover:bg-white/10"
+            onClick={() => {
+              setNamaKkEdit(resident.nama_kk);
+              setTarifEdit(String(Number(resident.tarif_iuran_bulanan)));
+              setEditOpen(true);
+            }}
+          >
+            Edit
+          </button>
+          <button
+            type="button"
+            className="rounded-xl border border-rose-300 dark:border-rose-700/50 px-3 py-1.5 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20"
+            onClick={() => setDeleteOpen(true)}
+          >
+            Hapus
+          </button>
+          <div className={`shrink-0 rounded-2xl px-3 py-1.5 text-sm font-bold ${
+            lunas === total
+              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
+              : lunas > 0
+              ? "bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300"
+              : "bg-slate-100 text-slate-600 dark:bg-white/8 dark:text-muted-foreground"
+          }`}>
+            {lunas}/{total} Lunas
+          </div>
         </div>
       </div>
 
@@ -139,6 +215,56 @@ function WargaCard({
           />
         ))}
       </div>
+
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="rounded-3xl border-2 border-slate-200 dark:border-white/10 bg-white dark:bg-card shadow-2xl sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Edit Data Warga</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <p className="text-sm font-semibold text-slate-700 dark:text-foreground">Nama KK</p>
+              <Input value={namaKkEdit} onChange={(event) => setNamaKkEdit(event.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <p className="text-sm font-semibold text-slate-700 dark:text-foreground">Tarif Iuran Bulanan</p>
+              <Input
+                type="number"
+                min={1}
+                value={tarifEdit}
+                onChange={(event) => setTarifEdit(event.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter className="flex-col gap-2 sm:flex-col">
+            <Button type="button" variant="rw" disabled={isUpdating} onClick={handleSaveEdit}>
+              {isUpdating ? "Menyimpan..." : "Simpan Perubahan"}
+            </Button>
+            <Button type="button" variant="outline" disabled={isUpdating} onClick={() => setEditOpen(false)}>
+              Batal
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <DialogContent className="rounded-3xl border-2 border-slate-200 dark:border-white/10 bg-white dark:bg-card shadow-2xl sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Nonaktifkan Warga</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-slate-600 dark:text-muted-foreground">
+            Yakin ingin menonaktifkan <strong>{resident.nama_kk}</strong>? Histori iuran tetap tersimpan untuk audit.
+          </p>
+          <DialogFooter className="flex-col gap-2 sm:flex-col">
+            <Button type="button" variant="destructive" disabled={isDeleting} onClick={handleConfirmDelete}>
+              {isDeleting ? "Memproses..." : "Ya, Nonaktifkan"}
+            </Button>
+            <Button type="button" variant="outline" disabled={isDeleting} onClick={() => setDeleteOpen(false)}>
+              Batal
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -15,6 +15,7 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 
 const IuranGrid = lazy(() => import("./IuranGrid"));
+const IuranSpreadsheet = lazy(() => import("./IuranSpreadsheet"));
 
 interface IuranItem {
   id: string | null;
@@ -92,6 +93,7 @@ const bulanOptions = [
 
 export default function RwWargaDashboardPage() {
   const { user } = useAuth();
+  const [viewMode, setViewMode] = useState<"spreadsheet" | "card">("spreadsheet");
   const [residents, setResidents] = useState<WargaItem[]>([]);
   const [tahunAktif, setTahunAktif] = useState<number>(currentYear);
   const [bulanAktif, setBulanAktif] = useState<number | null>(null);
@@ -254,7 +256,7 @@ export default function RwWargaDashboardPage() {
       {/* Page Header */}
       <header className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <span className="inline-flex size-12 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-md shadow-indigo-500/30">
+          <span className="inline-flex size-12 items-center justify-center rounded-2xl bg-linear-to-br from-indigo-500 to-violet-600 text-white shadow-md shadow-indigo-500/30">
             <Users className="size-6" />
           </span>
           <div>
@@ -391,7 +393,7 @@ export default function RwWargaDashboardPage() {
       {/* Keterangan blok aktif */}
       {selectedBlokLabel && residents.length > 0 && (
         <div className="flex items-center gap-2 rounded-2xl border-2 border-indigo-200 bg-indigo-50 px-4 py-3 dark:border-indigo-800/40 dark:bg-indigo-950/20">
-          <MapPin className="size-4 text-indigo-500 flex-shrink-0" />
+          <MapPin className="size-4 shrink-0 text-indigo-500" />
           <p className="text-base font-semibold text-indigo-800 dark:text-indigo-300">
             Menampilkan data: <span className="font-extrabold">{selectedBlokLabel}</span> — Tahun {tahunAktif}
             {bulanAktif ? ` • Bulan ${bulanAktif}` : " • Semua Bulan"}
@@ -400,18 +402,52 @@ export default function RwWargaDashboardPage() {
         </div>
       )}
 
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-card p-3">
+        <p className="text-sm font-semibold text-slate-600 dark:text-muted-foreground">
+          Mode tampilan data iuran warga
+        </p>
+        <div className="inline-flex gap-2">
+          <Button
+            type="button"
+            variant={viewMode === "spreadsheet" ? "rw" : "outline"}
+            size="sm"
+            onClick={() => setViewMode("spreadsheet")}
+          >
+            Spreadsheet
+          </Button>
+          <Button
+            type="button"
+            variant={viewMode === "card" ? "rw" : "outline"}
+            size="sm"
+            onClick={() => setViewMode("card")}
+          >
+            Kartu
+          </Button>
+        </div>
+      </div>
+
       {/* Grid iuran */}
       <Suspense fallback={<IuranGridSkeleton />}>
         {isLoadingData ? (
           <IuranGridSkeleton />
         ) : (
-          <IuranGrid
-            residents={residents}
-            formatRupiah={formatRupiah}
-            onPay={handleBayarIuran}
-            onUpdateResident={handleUpdateWarga}
-            onDeleteResident={handleDeleteWarga}
-          />
+          viewMode === "spreadsheet" ? (
+            <IuranSpreadsheet
+              residents={residents}
+              formatRupiah={formatRupiah}
+              onPay={handleBayarIuran}
+              onUpdateResident={handleUpdateWarga}
+              onDeleteResident={handleDeleteWarga}
+            />
+          ) : (
+            <IuranGrid
+              residents={residents}
+              formatRupiah={formatRupiah}
+              onPay={handleBayarIuran}
+              onUpdateResident={handleUpdateWarga}
+              onDeleteResident={handleDeleteWarga}
+            />
+          )
         )}
       </Suspense>
     </main>

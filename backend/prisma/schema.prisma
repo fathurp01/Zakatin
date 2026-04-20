@@ -87,6 +87,7 @@ model Masjid {
   blok_wilayah    BlokWilayah      @relation(fields: [blok_wilayah_id], references: [id])
   pengurus_masjid PengurusMasjid[]
   transaksi_zis   TransaksiZis[]
+  kas_masjid      KasMasjid[]
   pengaturan_zis  PengaturanZis?
 
   @@map("masjid")
@@ -108,6 +109,7 @@ model Warga {
   blok_wilayah_id     String
   nama_kk             String
   tarif_iuran_bulanan Decimal      @db.Decimal(10, 2)
+  deleted_at          DateTime?
   
   blok_wilayah        BlokWilayah  @relation(fields: [blok_wilayah_id], references: [id])
   iuran_warga         IuranWarga[]
@@ -145,6 +147,21 @@ model KasRW {
   @@map("kas_rw")
 }
 
+model KasMasjid {
+  id              String         @id @default(uuid())
+  masjid_id       String
+  jenis_transaksi JenisTransaksi
+  tanggal         DateTime       @default(now())
+  keterangan      String         @db.Text
+  nominal         Decimal        @db.Decimal(10, 2)
+  bukti_url       String?
+  kode_unik       String         @unique
+
+  masjid          Masjid         @relation(fields: [masjid_id], references: [id])
+
+  @@map("kas_masjid")
+}
+
 model TransaksiZis {
   id               String     @id @default(uuid())
   masjid_id        String
@@ -176,4 +193,18 @@ model PengaturanZis {
   masjid              Masjid  @relation(fields: [masjid_id], references: [id])
 
   @@map("pengaturan_zis")
+}
+
+model ShareLink {
+  id          String      @id @default(uuid())
+  token       String      @unique
+  scope       String
+  scope_id    String
+  expires_at  DateTime?
+  revoked_at  DateTime?
+  created_at  DateTime    @default(now())
+
+  @@index([scope, scope_id])
+  @@index([expires_at])
+  @@map("share_link")
 }

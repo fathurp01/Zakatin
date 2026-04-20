@@ -14,6 +14,8 @@ import {
   ShieldCheck,
   BookOpenText,
   SquarePen,
+  FileText,
+  Link2,
   LogOut,
 } from "lucide-react";
 
@@ -25,6 +27,12 @@ type SidebarItem = {
 };
 
 const rwItems: SidebarItem[] = [
+  {
+    href: "/dashboard/rw",
+    label: "Overview RW",
+    description: "Pantau tren iuran dan kas",
+    icon: LayoutDashboard,
+  },
   {
     href: "/dashboard/rw/warga",
     label: "Iuran Warga",
@@ -43,6 +51,18 @@ const rwItems: SidebarItem[] = [
     description: "Catat uang masuk dan keluar",
     icon: BookOpenText,
   },
+  {
+    href: "/dashboard/rw/reports",
+    label: "Laporan RW",
+    description: "Lihat ringkasan iuran dan kas",
+    icon: FileText,
+  },
+  {
+    href: "/dashboard/rw/share-links",
+    label: "Share Link RW",
+    description: "Kelola link transparansi publik",
+    icon: Link2,
+  },
 ];
 
 const masjidItems: SidebarItem[] = [
@@ -51,6 +71,24 @@ const masjidItems: SidebarItem[] = [
     label: "Ringkasan ZIS",
     description: "Lihat total zakat, infaq, beras",
     icon: HandCoins,
+  },
+  {
+    href: "/dashboard/masjid/kas",
+    label: "Buku Kas Masjid",
+    description: "Catat kas operasional masjid",
+    icon: BookOpenText,
+  },
+  {
+    href: "/dashboard/masjid/reports",
+    label: "Laporan Masjid",
+    description: "Ringkasan kas dan transaksi ZIS",
+    icon: FileText,
+  },
+  {
+    href: "/dashboard/masjid/share-links",
+    label: "Share Link Masjid",
+    description: "Kelola link transparansi publik",
+    icon: Link2,
   },
   {
     href: "/dashboard/masjid/input",
@@ -119,7 +157,7 @@ export function DashboardSidebar({ role }: { role: AppRole | null }) {
         <div
           className={cn(
             "inline-flex size-10 items-center justify-center rounded-2xl",
-            "bg-gradient-to-br shadow-sm",
+            "bg-linear-to-br shadow-sm",
             accent.gradient,
             "text-white"
           )}

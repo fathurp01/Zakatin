@@ -139,7 +139,7 @@ export default function TransparansiPage() {
       <header className="sticky top-0 z-50 w-full border-b border-slate-200/60 dark:border-white/8 bg-white/80 dark:bg-card/80 backdrop-blur-xl">
         <div className="mx-auto flex h-16 max-w-4xl items-center justify-between gap-4 px-4 sm:px-6">
           <Link href="/" className="flex items-center gap-2.5 group">
-            <span className="inline-flex size-8 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-sm group-hover:shadow-md transition-all duration-200">
+            <span className="inline-flex size-8 items-center justify-center rounded-xl bg-linear-to-br from-indigo-500 to-violet-600 text-white shadow-sm group-hover:shadow-md transition-all duration-200">
               <Building2 className="size-4" />
             </span>
             <span className="font-bold tracking-tight text-slate-900 dark:text-foreground">RWManage</span>
@@ -155,8 +155,8 @@ export default function TransparansiPage() {
       </header>
 
       {/* Decorative blobs */}
-      <div aria-hidden className="pointer-events-none fixed -top-40 -left-40 size-[500px] rounded-full bg-indigo-400/8 blur-3xl" />
-      <div aria-hidden className="pointer-events-none fixed -bottom-40 -right-40 size-[400px] rounded-full bg-emerald-400/8 blur-3xl" />
+      <div aria-hidden className="pointer-events-none fixed -top-40 -left-40 size-125 rounded-full bg-indigo-400/8 blur-3xl" />
+      <div aria-hidden className="pointer-events-none fixed -bottom-40 -right-40 size-100 rounded-full bg-emerald-400/8 blur-3xl" />
 
       <main className="relative flex flex-1 justify-center px-4 py-12 sm:px-6">
         <div className="w-full max-w-2xl flex flex-col gap-6 animate-fade-in">
@@ -239,7 +239,7 @@ export default function TransparansiPage() {
           {receipt ? (
             <div className="rounded-3xl border-2 border-slate-300 dark:border-white/15 bg-white dark:bg-card shadow-xl overflow-hidden animate-fade-in">
               {/* Paper header */}
-              <div className="bg-gradient-to-r from-indigo-600 to-violet-600 px-6 py-5 text-white text-center">
+              <div className="bg-linear-to-r from-indigo-600 to-violet-600 px-6 py-5 text-white text-center">
                 <div className="flex justify-center mb-2">
                   <Receipt className="size-8" />
                 </div>
@@ -319,7 +319,7 @@ function ReceiptList({ items }: { items: [string, string][] }) {
           key={label}
           className="flex flex-col gap-1 py-4 sm:flex-row sm:items-baseline sm:gap-4"
         >
-          <p className="text-xs font-bold uppercase tracking-widest text-slate-400 dark:text-muted-foreground sm:w-36 sm:flex-shrink-0">
+          <p className="text-xs font-bold uppercase tracking-widest text-slate-400 dark:text-muted-foreground sm:w-36 sm:shrink-0">
             {label}
           </p>
           <p className="text-base font-bold text-slate-900 dark:text-foreground break-all">

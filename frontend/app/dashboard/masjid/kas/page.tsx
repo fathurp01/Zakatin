@@ -32,11 +32,21 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Pencil, Trash2, BookOpenText, TrendingUp, TrendingDown, Wallet, Search, Plus } from "lucide-react";
+import {
+  Banknote,
+  CalendarRange,
+  Pencil,
+  Plus,
+  Search,
+  Trash2,
+  TrendingDown,
+  TrendingUp,
+  Wallet,
+} from "lucide-react";
 
-interface KasItem {
+interface KasMasjidItem {
   id: string;
-  wilayah_rw_id: string;
+  masjid_id: string;
   jenis_transaksi: "MASUK" | "KELUAR";
   tanggal: string;
   keterangan: string;
@@ -45,10 +55,10 @@ interface KasItem {
   kode_unik: string;
 }
 
-interface KasResponse {
+interface KasMasjidResponse {
   data: {
-    wilayah_rw_id: string;
-    items: KasItem[];
+    masjid_id: string;
+    items: KasMasjidItem[];
     summary: {
       total_masuk: number;
       total_keluar: number;
@@ -67,14 +77,8 @@ const initialState: ActionState = {
   fieldErrors: {},
 };
 
-const toDateInputValue = (value: string) => {
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return "";
-  }
-
-  return parsed.toISOString().slice(0, 10);
-};
+const selectClass =
+  "h-10 w-full rounded-xl border border-input bg-white dark:bg-input/20 dark:border-white/10 px-3.5 py-2.5 text-sm text-foreground outline-none transition-all duration-200 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/25 disabled:pointer-events-none disabled:opacity-50";
 
 const formatDate = (value: string) => {
   const parsed = new Date(value);
@@ -85,6 +89,15 @@ const formatDate = (value: string) => {
   return new Intl.DateTimeFormat("id-ID", {
     dateStyle: "medium",
   }).format(parsed);
+};
+
+const toDateInputValue = (value: string) => {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return "";
+  }
+
+  return parsed.toISOString().slice(0, 10);
 };
 
 const formatRupiah = (value: number | string): string => {
@@ -100,15 +113,19 @@ const formatRupiah = (value: number | string): string => {
   }).format(numericValue);
 };
 
-const selectClass = "h-10 w-full rounded-xl border border-input bg-white dark:bg-input/20 dark:border-white/10 px-3.5 py-2.5 text-sm text-foreground outline-none transition-all duration-200 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/25 disabled:pointer-events-none disabled:opacity-50";
-
-export default function KasRwDashboardPage() {
+export default function KasMasjidDashboardPage() {
   const { user } = useAuth();
-  const wilayahRwId = user?.wilayah_rw_id ?? "";
+  const masjidId = user?.masjid_ids?.[0] ?? "";
 
-  const [kasItems, setKasItems] = useState<KasItem[]>([]);
+  const [kasItems, setKasItems] = useState<KasMasjidItem[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
+  const [startDateTerm, setStartDateTerm] = useState("");
+  const [endDateTerm, setEndDateTerm] = useState("");
+
   const [activeSearch, setActiveSearch] = useState("");
+  const [activeStartDate, setActiveStartDate] = useState("");
+  const [activeEndDate, setActiveEndDate] = useState("");
+
   const [summary, setSummary] = useState({
     total_masuk: 0,
     total_keluar: 0,
@@ -116,18 +133,20 @@ export default function KasRwDashboardPage() {
   });
   const [isLoading, setIsLoading] = useState(false);
 
-  const fetchKas = useCallback(
-    async (search: string) => {
-      if (!wilayahRwId) {
+  const fetchKasMasjid = useCallback(
+    async (search: string, startDate: string, endDate: string) => {
+      if (!masjidId) {
         return;
       }
 
       setIsLoading(true);
       try {
-        const response = await api.get<KasResponse>("/rw/kas", {
+        const response = await api.get<KasMasjidResponse>("/masjid/kas", {
           params: {
-            wilayah_rw_id: wilayahRwId,
+            masjid_id: masjidId,
             ...(search.trim() ? { search: search.trim() } : {}),
+            ...(startDate ? { start_date: new Date(`${startDate}T00:00:00.000Z`).toISOString() } : {}),
+            ...(endDate ? { end_date: new Date(`${endDate}T23:59:59.999Z`).toISOString() } : {}),
           },
         });
 
@@ -142,19 +161,19 @@ export default function KasRwDashboardPage() {
         setIsLoading(false);
       }
     },
-    [wilayahRwId]
+    [masjidId]
   );
 
   useEffect(() => {
-    if (!wilayahRwId) {
+    if (!masjidId) {
       return;
     }
 
-    fetchKas("").catch(() => {
-      toast.error("Gagal memuat buku kas RW.");
+    fetchKasMasjid("", "", "").catch(() => {
+      toast.error("Gagal memuat buku kas masjid.");
       setIsLoading(false);
     });
-  }, [fetchKas, wilayahRwId]);
+  }, [fetchKasMasjid, masjidId]);
 
   const [createState, createAction, isCreating] = useActionState<ActionState, FormData>(
     async (_previousState, formData) => {
@@ -166,8 +185,8 @@ export default function KasRwDashboardPage() {
 
       const fieldErrors: FieldErrors = {};
 
-      if (!wilayahRwId) {
-        fieldErrors.wilayah_rw_id = "wilayah_rw_id tidak ditemukan di sesi login.";
+      if (!masjidId) {
+        fieldErrors.masjid_id = "masjid_id tidak tersedia di sesi login.";
       }
 
       if (jenisTransaksi !== "MASUK" && jenisTransaksi !== "KELUAR") {
@@ -183,12 +202,12 @@ export default function KasRwDashboardPage() {
       }
 
       if (Object.keys(fieldErrors).length > 0) {
-        return { message: "Periksa kembali form kas RW.", fieldErrors };
+        return { message: "Periksa kembali form kas masjid.", fieldErrors };
       }
 
       try {
-        await api.post("/rw/kas", {
-          wilayah_rw_id: wilayahRwId,
+        await api.post("/masjid/kas", {
+          masjid_id: masjidId,
           jenis_transaksi: jenisTransaksi,
           tanggal: tanggal ? new Date(`${tanggal}T00:00:00.000Z`).toISOString() : undefined,
           keterangan,
@@ -196,8 +215,8 @@ export default function KasRwDashboardPage() {
           ...(buktiUrl ? { bukti_url: buktiUrl } : {}),
         });
 
-        toast.success("Transaksi kas berhasil ditambahkan.");
-        await fetchKas(activeSearch);
+        toast.success("Transaksi kas masjid berhasil ditambahkan.");
+        await fetchKasMasjid(activeSearch, activeStartDate, activeEndDate);
 
         return { message: "", fieldErrors: {} };
       } catch (error) {
@@ -212,9 +231,14 @@ export default function KasRwDashboardPage() {
   const [filterState, filterAction, isFiltering] = useActionState<ActionState, FormData>(
     async (_previousState, formData) => {
       const search = String(formData.get("search") ?? "").trim();
-      setActiveSearch(search);
-      await fetchKas(search);
+      const startDate = String(formData.get("start_date") ?? "").trim();
+      const endDate = String(formData.get("end_date") ?? "").trim();
 
+      setActiveSearch(search);
+      setActiveStartDate(startDate);
+      setActiveEndDate(endDate);
+
+      await fetchKasMasjid(search, startDate, endDate);
       return { message: "", fieldErrors: {} };
     },
     initialState
@@ -258,14 +282,14 @@ export default function KasRwDashboardPage() {
     [summary]
   );
 
-  if (!wilayahRwId) {
+  if (!masjidId) {
     return (
       <main className="flex flex-1 flex-col gap-6">
         <Card>
           <CardHeader>
-            <CardTitle>Buku Kas RW</CardTitle>
+            <CardTitle>Buku Kas Masjid</CardTitle>
             <CardDescription>
-              wilayah_rw_id tidak tersedia. Login ulang sebagai RW untuk mengelola buku kas.
+              masjid_id tidak tersedia. Login ulang sebagai Pengurus Masjid untuk mengelola buku kas.
             </CardDescription>
           </CardHeader>
         </Card>
@@ -275,24 +299,22 @@ export default function KasRwDashboardPage() {
 
   return (
     <main className="flex flex-1 flex-col gap-6">
-      {/* Page header */}
       <header className="flex flex-col gap-1">
         <div className="flex items-center gap-3">
-          <span className="inline-flex size-10 items-center justify-center rounded-2xl bg-linear-to-br from-indigo-500 to-violet-600 text-white shadow-sm shadow-indigo-500/30">
-            <BookOpenText className="size-5" />
+          <span className="inline-flex size-10 items-center justify-center rounded-2xl bg-linear-to-br from-emerald-500 to-teal-600 text-white shadow-sm shadow-emerald-500/30">
+            <Banknote className="size-5" />
           </span>
           <div>
             <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 dark:text-foreground">
-              Buku Kas RW
+              Buku Kas Masjid
             </h1>
             <p className="text-sm text-slate-500 dark:text-muted-foreground">
-              Kelola transaksi kas masuk & keluar
+              Kelola transaksi operasional masuk dan keluar
             </p>
           </div>
         </div>
       </header>
 
-      {/* Summary cards */}
       <section className="grid gap-4 sm:grid-cols-3">
         {summaryCards.map(({ label, value, icon: Icon, gradient, iconBg, iconText, border, valueColor }) => (
           <div
@@ -309,7 +331,7 @@ export default function KasRwDashboardPage() {
                   {value}
                 </p>
               </div>
-              <span className={`inline-flex size-10 items-center justify-center rounded-2xl shrink-0 ${iconBg} ${iconText}`}>
+              <span className={`inline-flex size-10 shrink-0 items-center justify-center rounded-2xl ${iconBg} ${iconText}`}>
                 <Icon className="size-5" />
               </span>
             </div>
@@ -317,14 +339,13 @@ export default function KasRwDashboardPage() {
         ))}
       </section>
 
-      {/* Add transaction form */}
       <Card>
         <CardHeader className="border-b border-slate-100 dark:border-white/8 pb-4">
           <CardTitle className="flex items-center gap-2">
             <Plus className="size-4 text-slate-400" />
-            Tambah Transaksi Kas
+            Tambah Transaksi Kas Masjid
           </CardTitle>
-          <CardDescription>Catat kas masuk dan kas keluar dengan bukti transaksi.</CardDescription>
+          <CardDescription>Catat pemasukan dan pengeluaran operasional masjid.</CardDescription>
         </CardHeader>
         <CardContent className="pt-5">
           <form action={createAction} className="grid gap-4 sm:grid-cols-2">
@@ -349,7 +370,7 @@ export default function KasRwDashboardPage() {
               <Input
                 id="keterangan"
                 name="keterangan"
-                placeholder="Contoh: Pembelian alat kebersihan"
+                placeholder="Contoh: Pembelian alat kebersihan masjid"
                 aria-invalid={Boolean(createState.fieldErrors.keterangan)}
                 disabled={disabled}
               />
@@ -389,37 +410,44 @@ export default function KasRwDashboardPage() {
               <p className="sm:col-span-2 text-sm text-destructive">{createState.message}</p>
             ) : null}
 
-            <Button type="submit" variant="rw" size="default" className="sm:col-span-2 w-full sm:w-auto" disabled={disabled}>
+            <Button type="submit" variant="masjid" size="default" className="sm:col-span-2 w-full sm:w-auto" disabled={disabled}>
               {isCreating ? "Menyimpan..." : "Simpan Transaksi"}
             </Button>
           </form>
         </CardContent>
       </Card>
 
-      {/* Transaction history */}
       <Card>
         <CardHeader className="border-b border-slate-100 dark:border-white/8 pb-4">
           <CardTitle className="flex items-center gap-2">
-            <Search className="size-4 text-slate-400" />
-            Riwayat Buku Kas
+            <CalendarRange className="size-4 text-slate-400" />
+            Riwayat Buku Kas Masjid
           </CardTitle>
-          <CardDescription>Cari dan kelola transaksi yang sudah tercatat.</CardDescription>
+          <CardDescription>Filter berdasarkan keyword dan rentang tanggal.</CardDescription>
         </CardHeader>
         <CardContent className="pt-5 space-y-4">
-          <form action={filterAction} className="flex flex-col gap-3 sm:flex-row sm:items-end">
-            <div className="flex-1 space-y-1.5">
+          <form action={filterAction} className="grid gap-3 md:grid-cols-4 md:items-end">
+            <div className="md:col-span-2 space-y-1.5">
               <Label htmlFor="search" className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-muted-foreground">Cari Transaksi</Label>
               <Input
                 id="search"
                 name="search"
                 value={searchTerm}
                 onChange={(event) => setSearchTerm(event.target.value)}
-                placeholder="Cari dari keterangan atau kode unik"
+                placeholder="Keterangan atau kode unik"
                 disabled={disabled}
               />
             </div>
-            <Button type="submit" variant="outline" size="default" disabled={disabled} className="w-full sm:w-auto whitespace-nowrap">
-              {isFiltering ? "Memuat..." : "Terapkan"}
+            <div className="space-y-1.5">
+              <Label htmlFor="start_date" className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-muted-foreground">Dari Tanggal</Label>
+              <Input id="start_date" name="start_date" type="date" value={startDateTerm} onChange={(event) => setStartDateTerm(event.target.value)} disabled={disabled} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="end_date" className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-muted-foreground">Sampai Tanggal</Label>
+              <Input id="end_date" name="end_date" type="date" value={endDateTerm} onChange={(event) => setEndDateTerm(event.target.value)} disabled={disabled} />
+            </div>
+            <Button type="submit" variant="outline" size="default" disabled={disabled} className="md:col-span-4 w-full md:w-auto">
+              {isFiltering ? "Memuat..." : "Terapkan Filter"}
             </Button>
           </form>
 
@@ -433,7 +461,7 @@ export default function KasRwDashboardPage() {
                   <TableHead className="font-semibold">Jenis</TableHead>
                   <TableHead className="font-semibold">Keterangan</TableHead>
                   <TableHead className="font-semibold">Nominal</TableHead>
-                  <TableHead className="font-semibold hidden md:table-cell">Kode Unik</TableHead>
+                  <TableHead className="font-semibold hidden lg:table-cell">Kode Unik</TableHead>
                   <TableHead className="text-right font-semibold">Aksi</TableHead>
                 </TableRow>
               </TableHeader>
@@ -441,7 +469,7 @@ export default function KasRwDashboardPage() {
                 {kasItems.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={6} className="py-10 text-center text-sm text-slate-500 dark:text-muted-foreground">
-                      {isLoading ? "Memuat data kas..." : "Belum ada transaksi untuk filter ini."}
+                      {isLoading ? "Memuat data kas masjid..." : "Belum ada transaksi untuk filter ini."}
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -462,7 +490,7 @@ export default function KasRwDashboardPage() {
                             href={item.bukti_url}
                             target="_blank"
                             rel="noreferrer"
-                            className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline underline-offset-4"
+                            className="text-xs text-emerald-600 dark:text-emerald-400 hover:underline underline-offset-4"
                           >
                             Lihat Bukti →
                           </a>
@@ -473,15 +501,15 @@ export default function KasRwDashboardPage() {
                       <TableCell className="font-bold tabular-nums text-slate-900 dark:text-foreground whitespace-nowrap">
                         {formatRupiah(item.nominal)}
                       </TableCell>
-                      <TableCell className="hidden md:table-cell">
+                      <TableCell className="hidden lg:table-cell">
                         <code className="text-xs text-slate-500 dark:text-muted-foreground bg-slate-100 dark:bg-white/8 px-2 py-0.5 rounded-md">
                           {item.kode_unik}
                         </code>
                       </TableCell>
                       <TableCell>
                         <div className="flex justify-end gap-1.5">
-                          <EditKasDialog item={item} onSaved={() => fetchKas(activeSearch)} disabled={disabled} />
-                          <DeleteKasDialog itemId={item.id} onDeleted={() => fetchKas(activeSearch)} disabled={disabled} />
+                          <EditKasMasjidDialog item={item} onSaved={() => fetchKasMasjid(activeSearch, activeStartDate, activeEndDate)} disabled={disabled} />
+                          <DeleteKasMasjidDialog itemId={item.id} onDeleted={() => fetchKasMasjid(activeSearch, activeStartDate, activeEndDate)} disabled={disabled} />
                         </div>
                       </TableCell>
                     </TableRow>
@@ -496,12 +524,12 @@ export default function KasRwDashboardPage() {
   );
 }
 
-function EditKasDialog({
+function EditKasMasjidDialog({
   item,
   onSaved,
   disabled,
 }: {
-  item: KasItem;
+  item: KasMasjidItem;
   onSaved: () => Promise<void>;
   disabled: boolean;
 }) {
@@ -522,11 +550,11 @@ function EditKasDialog({
       if (!nominal || Number(nominal) <= 0) fieldErrors.nominal = "Nominal harus lebih dari 0.";
 
       if (Object.keys(fieldErrors).length > 0) {
-        return { message: "Periksa kembali data update kas.", fieldErrors };
+        return { message: "Periksa kembali data update kas masjid.", fieldErrors };
       }
 
       try {
-        await api.patch(`/rw/kas/${itemId}`, {
+        await api.patch(`/masjid/kas/${itemId}`, {
           jenis_transaksi: jenisTransaksi,
           tanggal: tanggal ? new Date(`${tanggal}T00:00:00.000Z`).toISOString() : undefined,
           keterangan,
@@ -534,7 +562,7 @@ function EditKasDialog({
           ...(buktiUrl ? { bukti_url: buktiUrl } : {}),
         });
 
-        toast.success("Transaksi kas berhasil diperbarui.");
+        toast.success("Transaksi kas masjid berhasil diperbarui.");
         await onSaved();
         setOpen(false);
 
@@ -559,7 +587,7 @@ function EditKasDialog({
 
       <DialogContent className="rounded-3xl border border-slate-200/60 dark:border-white/8 bg-white/95 dark:bg-card/95 backdrop-blur-xl shadow-2xl">
         <DialogHeader>
-          <DialogTitle>Edit Transaksi Kas</DialogTitle>
+          <DialogTitle>Edit Transaksi Kas Masjid</DialogTitle>
           <DialogDescription>Perbarui data transaksi tanpa mengubah kode unik.</DialogDescription>
         </DialogHeader>
 
@@ -615,7 +643,7 @@ function EditKasDialog({
 
           <DialogFooter className="gap-2 sm:gap-0">
             <Button type="button" variant="outline" disabled={isEditing} onClick={() => setOpen(false)}>Batal</Button>
-            <Button type="submit" variant="rw" disabled={isEditing}>
+            <Button type="submit" variant="masjid" disabled={isEditing}>
               {isEditing ? "Menyimpan..." : "Simpan Perubahan"}
             </Button>
           </DialogFooter>
@@ -625,7 +653,7 @@ function EditKasDialog({
   );
 }
 
-function DeleteKasDialog({
+function DeleteKasMasjidDialog({
   itemId,
   onDeleted,
   disabled,
@@ -645,8 +673,8 @@ function DeleteKasDialog({
       }
 
       try {
-        await api.delete(`/rw/kas/${id}`);
-        toast.success("Transaksi kas berhasil dihapus.");
+        await api.delete(`/masjid/kas/${id}`);
+        toast.success("Transaksi kas masjid berhasil dihapus.");
         await onDeleted();
         setOpen(false);
         return { message: "", fieldErrors: {} };
@@ -670,8 +698,8 @@ function DeleteKasDialog({
 
       <DialogContent className="rounded-3xl border border-slate-200/60 dark:border-white/8 bg-white/95 dark:bg-card/95 backdrop-blur-xl shadow-2xl">
         <DialogHeader>
-          <DialogTitle>Hapus Transaksi Kas</DialogTitle>
-          <DialogDescription>Aksi ini tidak dapat dibatalkan. Data kas akan dihapus permanen.</DialogDescription>
+          <DialogTitle>Hapus Transaksi Kas Masjid</DialogTitle>
+          <DialogDescription>Aksi ini tidak dapat dibatalkan. Data kas masjid akan dihapus permanen.</DialogDescription>
         </DialogHeader>
 
         <form action={deleteAction} className="space-y-4">

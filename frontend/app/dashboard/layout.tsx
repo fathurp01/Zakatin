@@ -12,7 +12,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
     <div className="flex flex-1 flex-col md:flex-row page-gradient min-h-screen">
       {/* Sidebar */}
       <aside className="
-        md:w-72 md:min-h-screen md:flex-shrink-0
+        md:w-72 md:min-h-screen md:shrink-0
         border-b md:border-b-0 md:border-r
         border-slate-200/60 dark:border-white/8
         bg-white/80 dark:bg-card/80

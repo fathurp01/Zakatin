@@ -1,0 +1,839 @@
+import { Request, Response } from "express";
+import PDFDocument from "pdfkit";
+import ExcelJS from "exceljs";
+import { JenisTransaksi, JenisBayar, Prisma, StatusIuran } from "@prisma/client";
+import { prisma } from "../lib/prisma";
+
+type ReportFormat = "PDF" | "XLSX";
+
+interface ReportQuery {
+  wilayah_rw_id?: string;
+  masjid_id?: string;
+  tahun?: string;
+  bulan?: string;
+  format?: ReportFormat;
+}
+
+interface MonthSeriesItem {
+  bulan: number;
+  label: string;
+  iuran_lunas_count: number;
+  iuran_belum_count: number;
+  iuran_lunas_nominal: number;
+  iuran_belum_nominal: number;
+  kas_masuk: number;
+  kas_keluar: number;
+  kas_saldo: number;
+  zis_uang_zakat: number;
+  zis_uang_infaq: number;
+  zis_beras_kg: number;
+}
+
+interface RwReportPayload {
+  scope: "RW";
+  wilayah_rw: {
+    id: string;
+    nama_kompleks: string;
+    no_rw: string;
+  };
+  periode: {
+    tahun: number;
+    bulan: number | null;
+    label: string;
+  };
+  summary: {
+    total_warga: number;
+    total_iuran_lunas_count: number;
+    total_iuran_belum_count: number;
+    total_iuran_lunas_nominal: number;
+    total_iuran_belum_nominal: number;
+    total_kas_masuk: number;
+    total_kas_keluar: number;
+    saldo_kas: number;
+  };
+  series: MonthSeriesItem[];
+}
+
+interface MasjidReportPayload {
+  scope: "MASJID";
+  masjid: {
+    id: string;
+    nama_masjid: string;
+    alamat: string;
+    blok_wilayah: {
+      nama_blok: string;
+      no_rt: string | null;
+      nama_kompleks: string;
+      no_rw: string;
+    };
+  };
+  periode: {
+    tahun: number;
+    bulan: number | null;
+    label: string;
+  };
+  summary: {
+    total_kas_masuk: number;
+    total_kas_keluar: number;
+    saldo_kas: number;
+    total_zis_uang_zakat: number;
+    total_zis_uang_infaq: number;
+    total_zis_beras_kg: number;
+    total_transaksi_zis: number;
+  };
+  series: MonthSeriesItem[];
+}
+
+const MONTH_LABELS = [
+  "Januari",
+  "Februari",
+  "Maret",
+  "April",
+  "Mei",
+  "Juni",
+  "Juli",
+  "Agustus",
+  "September",
+  "Oktober",
+  "November",
+  "Desember",
+];
+
+const formatCurrency = (value: number): string => {
+  return new Intl.NumberFormat("id-ID", {
+    style: "currency",
+    currency: "IDR",
+    maximumFractionDigits: 0,
+  }).format(value);
+};
+
+const decimalToNumber = (value: Prisma.Decimal | null | undefined): number => {
+  if (!value) {
+    return 0;
+  }
+
+  return Number(value);
+};
+
+const toInt = (value: string | undefined, fallback: number): number => {
+  if (!value) {
+    return fallback;
+  }
+
+  const parsed = Number(value);
+  return Number.isInteger(parsed) ? parsed : fallback;
+};
+
+const getDateRange = (tahun: number, bulan?: number | null) => {
+  const start = bulan
+    ? new Date(tahun, bulan - 1, 1, 0, 0, 0, 0)
+    : new Date(tahun, 0, 1, 0, 0, 0, 0);
+
+  const end = bulan
+    ? new Date(tahun, bulan, 0, 23, 59, 59, 999)
+    : new Date(tahun, 11, 31, 23, 59, 59, 999);
+
+  return { start, end };
+};
+
+const buildPeriodLabel = (tahun: number, bulan: number | null): string => {
+  return bulan ? `${MONTH_LABELS[bulan - 1]} ${tahun}` : `Tahun ${tahun}`;
+};
+
+const buildMonthSeriesSkeleton = (): MonthSeriesItem[] => {
+  return Array.from({ length: 12 }, (_, index) => ({
+    bulan: index + 1,
+    label: MONTH_LABELS[index],
+    iuran_lunas_count: 0,
+    iuran_belum_count: 0,
+    iuran_lunas_nominal: 0,
+    iuran_belum_nominal: 0,
+    kas_masuk: 0,
+    kas_keluar: 0,
+    kas_saldo: 0,
+    zis_uang_zakat: 0,
+    zis_uang_infaq: 0,
+    zis_beras_kg: 0,
+  }));
+};
+
+const getAuthorizedRw = async (userId: string, requestedRwId?: string) => {
+  if (requestedRwId) {
+    const relation = await prisma.wilayahRW.findFirst({
+      where: {
+        id: requestedRwId,
+        user_id: userId,
+      },
+      select: {
+        id: true,
+        nama_kompleks: true,
+        no_rw: true,
+      },
+    });
+
+    return relation ?? null;
+  }
+
+  const relation = await prisma.wilayahRW.findUnique({
+    where: { user_id: userId },
+    select: {
+      id: true,
+      nama_kompleks: true,
+      no_rw: true,
+    },
+  });
+
+  return relation ?? null;
+};
+
+const getAuthorizedMasjid = async (userId: string, requestedMasjidId?: string) => {
+  if (requestedMasjidId) {
+    const relation = await prisma.pengurusMasjid.findFirst({
+      where: {
+        user_id: userId,
+        masjid_id: requestedMasjidId,
+      },
+      select: {
+        masjid: {
+          select: {
+            id: true,
+            nama_masjid: true,
+            alamat: true,
+            blok_wilayah: {
+              select: {
+                nama_blok: true,
+                no_rt: true,
+                wilayah_rw: {
+                  select: {
+                    nama_kompleks: true,
+                    no_rw: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return relation?.masjid ?? null;
+  }
+
+  const relation = await prisma.pengurusMasjid.findFirst({
+    where: { user_id: userId },
+    orderBy: { id: "asc" },
+    select: {
+      masjid: {
+        select: {
+          id: true,
+          nama_masjid: true,
+          alamat: true,
+          blok_wilayah: {
+            select: {
+              nama_blok: true,
+              no_rt: true,
+              wilayah_rw: {
+                select: {
+                  nama_kompleks: true,
+                  no_rw: true,
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  return relation?.masjid ?? null;
+};
+
+const createRwSeries = (
+  yearIuran: Array<{ bulan: number; status: StatusIuran; nominal: Prisma.Decimal }>,
+  kasList: Array<{ tanggal: Date; jenis_transaksi: JenisTransaksi; nominal: Prisma.Decimal }>
+) => {
+  const series = buildMonthSeriesSkeleton();
+
+  yearIuran.forEach((item) => {
+    const target = series[item.bulan - 1];
+    const nominal = decimalToNumber(item.nominal);
+
+    if (item.status === StatusIuran.LUNAS) {
+      target.iuran_lunas_count += 1;
+      target.iuran_lunas_nominal += nominal;
+    } else {
+      target.iuran_belum_count += 1;
+      target.iuran_belum_nominal += nominal;
+    }
+  });
+
+  kasList.forEach((item) => {
+    const target = series[item.tanggal.getMonth()];
+    const nominal = decimalToNumber(item.nominal);
+
+    if (item.jenis_transaksi === JenisTransaksi.MASUK) {
+      target.kas_masuk += nominal;
+    } else {
+      target.kas_keluar += nominal;
+    }
+  });
+
+  let runningSaldo = 0;
+  series.forEach((item) => {
+    item.kas_saldo = item.kas_masuk - item.kas_keluar;
+    runningSaldo += item.kas_saldo;
+    item.kas_saldo = runningSaldo;
+  });
+
+  return series;
+};
+
+const createMasjidSeries = (
+  kasList: Array<{ tanggal: Date; jenis_transaksi: JenisTransaksi; nominal: Prisma.Decimal }>,
+  zisList: Array<{
+    waktu_transaksi: Date;
+    nominal_zakat: Prisma.Decimal;
+    nominal_infaq: Prisma.Decimal;
+    total_beras_kg: Prisma.Decimal;
+  }>
+) => {
+  const series = buildMonthSeriesSkeleton();
+
+  kasList.forEach((item) => {
+    const target = series[item.tanggal.getMonth()];
+    const nominal = decimalToNumber(item.nominal);
+
+    if (item.jenis_transaksi === JenisTransaksi.MASUK) {
+      target.kas_masuk += nominal;
+    } else {
+      target.kas_keluar += nominal;
+    }
+  });
+
+  zisList.forEach((item) => {
+    const target = series[item.waktu_transaksi.getMonth()];
+    target.zis_uang_zakat += decimalToNumber(item.nominal_zakat);
+    target.zis_uang_infaq += decimalToNumber(item.nominal_infaq);
+    target.zis_beras_kg += decimalToNumber(item.total_beras_kg);
+  });
+
+  let runningSaldo = 0;
+  series.forEach((item) => {
+    item.kas_saldo = item.kas_masuk - item.kas_keluar;
+    runningSaldo += item.kas_saldo;
+    item.kas_saldo = runningSaldo;
+  });
+
+  return series;
+};
+
+const buildRwReport = async (req: Request): Promise<RwReportPayload | null> => {
+  if (!req.user?.id) {
+    return null;
+  }
+
+  const query = req.query as ReportQuery;
+  const tahun = toInt(query.tahun, new Date().getFullYear());
+  const bulan = query.bulan ? toInt(query.bulan, 0) : null;
+  const requestedRwId = query.wilayah_rw_id;
+
+  if (bulan !== null && (bulan < 1 || bulan > 12)) {
+    throw new Error("Bulan tidak valid.");
+  }
+
+  const rw = await getAuthorizedRw(req.user.id, requestedRwId);
+  if (!rw) {
+    return null;
+  }
+
+  const { start, end } = getDateRange(tahun, bulan);
+
+  const activeWarga = await prisma.warga.findMany({
+    where: {
+      deleted_at: null,
+      blok_wilayah: {
+        wilayah_rw_id: rw.id,
+      },
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  const wargaIds = activeWarga.map((item) => item.id);
+
+  const iuranList = wargaIds.length
+    ? await prisma.iuranWarga.findMany({
+        where: {
+          warga_id: { in: wargaIds },
+          tahun,
+          ...(bulan !== null ? { bulan } : {}),
+        },
+        select: {
+          bulan: true,
+          status: true,
+          nominal: true,
+        },
+      })
+    : [];
+
+  const kasList = await prisma.kasRW.findMany({
+    where: {
+      wilayah_rw_id: rw.id,
+      tanggal: {
+        gte: start,
+        lte: end,
+      },
+    },
+    select: {
+      tanggal: true,
+      jenis_transaksi: true,
+      nominal: true,
+    },
+  });
+
+  const series = createRwSeries(iuranList, kasList);
+
+  const summary = iuranList.reduce(
+    (accumulator, item) => {
+      const nominal = decimalToNumber(item.nominal);
+      if (item.status === StatusIuran.LUNAS) {
+        accumulator.total_iuran_lunas_count += 1;
+        accumulator.total_iuran_lunas_nominal += nominal;
+      } else {
+        accumulator.total_iuran_belum_count += 1;
+        accumulator.total_iuran_belum_nominal += nominal;
+      }
+
+      return accumulator;
+    },
+    {
+      total_iuran_lunas_count: 0,
+      total_iuran_belum_count: 0,
+      total_iuran_lunas_nominal: 0,
+      total_iuran_belum_nominal: 0,
+    }
+  );
+
+  const kasSummary = kasList.reduce(
+    (accumulator, item) => {
+      const nominal = decimalToNumber(item.nominal);
+      if (item.jenis_transaksi === JenisTransaksi.MASUK) {
+        accumulator.total_kas_masuk += nominal;
+      } else {
+        accumulator.total_kas_keluar += nominal;
+      }
+
+      return accumulator;
+    },
+    {
+      total_kas_masuk: 0,
+      total_kas_keluar: 0,
+    }
+  );
+
+  return {
+    scope: "RW",
+    wilayah_rw: rw,
+    periode: {
+      tahun,
+      bulan,
+      label: buildPeriodLabel(tahun, bulan),
+    },
+    summary: {
+      total_warga: activeWarga.length,
+      total_iuran_lunas_count: summary.total_iuran_lunas_count,
+      total_iuran_belum_count: summary.total_iuran_belum_count,
+      total_iuran_lunas_nominal: summary.total_iuran_lunas_nominal,
+      total_iuran_belum_nominal: summary.total_iuran_belum_nominal,
+      total_kas_masuk: kasSummary.total_kas_masuk,
+      total_kas_keluar: kasSummary.total_kas_keluar,
+      saldo_kas: kasSummary.total_kas_masuk - kasSummary.total_kas_keluar,
+    },
+    series,
+  };
+};
+
+const buildMasjidReport = async (req: Request): Promise<MasjidReportPayload | null> => {
+  if (!req.user?.id) {
+    return null;
+  }
+
+  const query = req.query as ReportQuery;
+  const tahun = toInt(query.tahun, new Date().getFullYear());
+  const bulan = query.bulan ? toInt(query.bulan, 0) : null;
+  const requestedMasjidId = query.masjid_id;
+
+  if (bulan !== null && (bulan < 1 || bulan > 12)) {
+    throw new Error("Bulan tidak valid.");
+  }
+
+  const masjid = await getAuthorizedMasjid(req.user.id, requestedMasjidId);
+  if (!masjid) {
+    return null;
+  }
+
+  const { start, end } = getDateRange(tahun, bulan);
+
+  const kasList = await prisma.kasMasjid.findMany({
+    where: {
+      masjid_id: masjid.id,
+      tanggal: {
+        gte: start,
+        lte: end,
+      },
+    },
+    select: {
+      tanggal: true,
+      jenis_transaksi: true,
+      nominal: true,
+    },
+  });
+
+  const zisList = await prisma.transaksiZis.findMany({
+    where: {
+      masjid_id: masjid.id,
+      waktu_transaksi: {
+        gte: start,
+        lte: end,
+      },
+    },
+    select: {
+      waktu_transaksi: true,
+      nominal_zakat: true,
+      nominal_infaq: true,
+      total_beras_kg: true,
+      jenis_bayar: true,
+    },
+  });
+
+  const series = createMasjidSeries(kasList, zisList);
+
+  const kasSummary = kasList.reduce(
+    (accumulator, item) => {
+      const nominal = decimalToNumber(item.nominal);
+      if (item.jenis_transaksi === JenisTransaksi.MASUK) {
+        accumulator.total_kas_masuk += nominal;
+      } else {
+        accumulator.total_kas_keluar += nominal;
+      }
+
+      return accumulator;
+    },
+    {
+      total_kas_masuk: 0,
+      total_kas_keluar: 0,
+    }
+  );
+
+  const zisSummary = zisList.reduce(
+    (accumulator, item) => {
+      accumulator.total_zis_uang_zakat += decimalToNumber(item.nominal_zakat);
+      accumulator.total_zis_uang_infaq += decimalToNumber(item.nominal_infaq);
+      accumulator.total_zis_beras_kg += decimalToNumber(item.total_beras_kg);
+      accumulator.total_transaksi_zis += 1;
+      return accumulator;
+    },
+    {
+      total_zis_uang_zakat: 0,
+      total_zis_uang_infaq: 0,
+      total_zis_beras_kg: 0,
+      total_transaksi_zis: 0,
+    }
+  );
+
+  return {
+    scope: "MASJID",
+    masjid: {
+      id: masjid.id,
+      nama_masjid: masjid.nama_masjid,
+      alamat: masjid.alamat,
+      blok_wilayah: {
+        nama_blok: masjid.blok_wilayah.nama_blok,
+        no_rt: masjid.blok_wilayah.no_rt,
+        nama_kompleks: masjid.blok_wilayah.wilayah_rw.nama_kompleks,
+        no_rw: masjid.blok_wilayah.wilayah_rw.no_rw,
+      },
+    },
+    periode: {
+      tahun,
+      bulan,
+      label: buildPeriodLabel(tahun, bulan),
+    },
+    summary: {
+      total_kas_masuk: kasSummary.total_kas_masuk,
+      total_kas_keluar: kasSummary.total_kas_keluar,
+      saldo_kas: kasSummary.total_kas_masuk - kasSummary.total_kas_keluar,
+      total_zis_uang_zakat: zisSummary.total_zis_uang_zakat,
+      total_zis_uang_infaq: zisSummary.total_zis_uang_infaq,
+      total_zis_beras_kg: zisSummary.total_zis_beras_kg,
+      total_transaksi_zis: zisSummary.total_transaksi_zis,
+    },
+    series,
+  };
+};
+
+const sendPdf = async (res: Response, filename: string, title: string, lines: string[]) => {
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+
+  const doc = new PDFDocument({ margin: 40, size: "A4" });
+  doc.pipe(res);
+
+  doc.fontSize(18).font("Helvetica-Bold").text(title);
+  doc.moveDown(0.5);
+  doc.fontSize(10).font("Helvetica").text(`Dicetak: ${new Date().toLocaleString("id-ID")}`);
+  doc.moveDown();
+
+  lines.forEach((line) => {
+    doc.fontSize(11).text(line, { lineGap: 4 });
+  });
+
+  doc.end();
+};
+
+const addSummarySheet = (workbook: ExcelJS.Workbook, title: string, rows: Array<[string, string]>) => {
+  const sheet = workbook.addWorksheet("Ringkasan");
+  sheet.addRow([title]);
+  sheet.addRow(["Dicetak", new Date().toLocaleString("id-ID")]);
+  sheet.addRow([]);
+
+  rows.forEach((row) => sheet.addRow(row));
+
+  sheet.getColumn(1).width = 32;
+  sheet.getColumn(2).width = 24;
+  sheet.getRow(1).font = { bold: true, size: 14 };
+  sheet.getRow(1).alignment = { vertical: "middle" };
+};
+
+const addSeriesSheet = (workbook: ExcelJS.Workbook, series: MonthSeriesItem[]) => {
+  const sheet = workbook.addWorksheet("Series Bulanan");
+  sheet.columns = [
+    { header: "Bulan", key: "label", width: 18 },
+    { header: "Iuran Lunas", key: "iuran_lunas_count", width: 12 },
+    { header: "Iuran Belum", key: "iuran_belum_count", width: 12 },
+    { header: "Kas Masuk", key: "kas_masuk", width: 16 },
+    { header: "Kas Keluar", key: "kas_keluar", width: 16 },
+    { header: "Saldo Kumulatif", key: "kas_saldo", width: 18 },
+    { header: "ZIS Zakat", key: "zis_uang_zakat", width: 16 },
+    { header: "ZIS Infaq", key: "zis_uang_infaq", width: 16 },
+    { header: "Beras (Kg)", key: "zis_beras_kg", width: 14 },
+  ];
+
+  sheet.addRows(
+    series.map((item) => ({
+      label: item.label,
+      iuran_lunas_count: item.iuran_lunas_count,
+      iuran_belum_count: item.iuran_belum_count,
+      kas_masuk: item.kas_masuk,
+      kas_keluar: item.kas_keluar,
+      kas_saldo: item.kas_saldo,
+      zis_uang_zakat: item.zis_uang_zakat,
+      zis_uang_infaq: item.zis_uang_infaq,
+      zis_beras_kg: item.zis_beras_kg,
+    }))
+  );
+
+  sheet.getRow(1).font = { bold: true };
+  sheet.getRow(1).alignment = { horizontal: "center" };
+}
+
+const exportRwExcel = async (res: Response, report: RwReportPayload) => {
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = "RWManage";
+  workbook.created = new Date();
+
+  addSummarySheet(workbook, `Laporan RW - ${report.periode.label}`, [
+    ["RW", `${report.wilayah_rw.no_rw} - ${report.wilayah_rw.nama_kompleks}`],
+    ["Total Warga", String(report.summary.total_warga)],
+    ["Iuran Lunas (Jumlah)", String(report.summary.total_iuran_lunas_count)],
+    ["Iuran Belum (Jumlah)", String(report.summary.total_iuran_belum_count)],
+    ["Iuran Lunas (Nominal)", formatCurrency(report.summary.total_iuran_lunas_nominal)],
+    ["Iuran Belum (Nominal)", formatCurrency(report.summary.total_iuran_belum_nominal)],
+    ["Kas Masuk", formatCurrency(report.summary.total_kas_masuk)],
+    ["Kas Keluar", formatCurrency(report.summary.total_kas_keluar)],
+    ["Saldo Kas", formatCurrency(report.summary.saldo_kas)],
+  ]);
+  addSeriesSheet(workbook, report.series);
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  const filename = `laporan-rw-${report.periode.tahun}${report.periode.bulan ? `-${String(report.periode.bulan).padStart(2, "0")}` : ""}.xlsx`;
+
+  res.setHeader(
+    "Content-Type",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  );
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  res.send(Buffer.from(buffer));
+};
+
+const exportMasjidExcel = async (res: Response, report: MasjidReportPayload) => {
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = "RWManage";
+  workbook.created = new Date();
+
+  addSummarySheet(workbook, `Laporan Masjid - ${report.periode.label}`, [
+    ["Masjid", report.masjid.nama_masjid],
+    ["Alamat", report.masjid.alamat],
+    ["RW", `${report.masjid.blok_wilayah.no_rw} - ${report.masjid.blok_wilayah.nama_kompleks}`],
+    ["RT / Blok", `${report.masjid.blok_wilayah.no_rt ?? "-"} / ${report.masjid.blok_wilayah.nama_blok}`],
+    ["Transaksi ZIS", String(report.summary.total_transaksi_zis)],
+    ["ZIS Zakat", formatCurrency(report.summary.total_zis_uang_zakat)],
+    ["ZIS Infaq", formatCurrency(report.summary.total_zis_uang_infaq)],
+    ["Beras (Kg)", report.summary.total_zis_beras_kg.toFixed(2)],
+    ["Kas Masuk", formatCurrency(report.summary.total_kas_masuk)],
+    ["Kas Keluar", formatCurrency(report.summary.total_kas_keluar)],
+    ["Saldo Kas", formatCurrency(report.summary.saldo_kas)],
+  ]);
+  addSeriesSheet(workbook, report.series);
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  const filename = `laporan-masjid-${report.periode.tahun}${report.periode.bulan ? `-${String(report.periode.bulan).padStart(2, "0")}` : ""}.xlsx`;
+
+  res.setHeader(
+    "Content-Type",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  );
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  res.send(Buffer.from(buffer));
+};
+
+export const getRwReport = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const report = await buildRwReport(req);
+
+    if (!report) {
+      res.status(403).json({
+        success: false,
+        message: "Akses ditolak atau RW tidak ditemukan.",
+      });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Laporan RW berhasil diambil.",
+      data: report,
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error instanceof Error ? error.message : "Terjadi kesalahan saat mengambil laporan RW.",
+    });
+  }
+};
+
+export const getMasjidReport = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const report = await buildMasjidReport(req);
+
+    if (!report) {
+      res.status(403).json({
+        success: false,
+        message: "Akses ditolak atau masjid tidak ditemukan.",
+      });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Laporan masjid berhasil diambil.",
+      data: report,
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error instanceof Error ? error.message : "Terjadi kesalahan saat mengambil laporan masjid.",
+    });
+  }
+};
+
+export const exportRwReport = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const report = await buildRwReport(req);
+
+    if (!report) {
+      res.status(403).json({
+        success: false,
+        message: "Akses ditolak atau RW tidak ditemukan.",
+      });
+      return;
+    }
+
+    const format = String((req.query as ReportQuery).format ?? "PDF").toUpperCase() as ReportFormat;
+
+    if (format === "XLSX") {
+      await exportRwExcel(res, report);
+      return;
+    }
+
+    const filename = `laporan-rw-${report.periode.tahun}${report.periode.bulan ? `-${String(report.periode.bulan).padStart(2, "0")}` : ""}.pdf`;
+    await sendPdf(res, filename, `Laporan RW - ${report.periode.label}`, [
+      `RW: ${report.wilayah_rw.no_rw} - ${report.wilayah_rw.nama_kompleks}`,
+      `Total warga aktif: ${report.summary.total_warga}`,
+      `Iuran lunas: ${report.summary.total_iuran_lunas_count} (${formatCurrency(report.summary.total_iuran_lunas_nominal)})`,
+      `Iuran belum: ${report.summary.total_iuran_belum_count} (${formatCurrency(report.summary.total_iuran_belum_nominal)})`,
+      `Kas masuk: ${formatCurrency(report.summary.total_kas_masuk)}`,
+      `Kas keluar: ${formatCurrency(report.summary.total_kas_keluar)}`,
+      `Saldo kas: ${formatCurrency(report.summary.saldo_kas)}`,
+      "",
+      "Series bulanan:",
+      ...report.series.map(
+        (item) =>
+          `${item.label}: iuran lunas ${item.iuran_lunas_count}, iuran belum ${item.iuran_belum_count}, kas masuk ${formatCurrency(item.kas_masuk)}, kas keluar ${formatCurrency(item.kas_keluar)}, saldo ${formatCurrency(item.kas_saldo)}`
+      ),
+    ]);
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error instanceof Error ? error.message : "Terjadi kesalahan saat mengunduh laporan RW.",
+    });
+  }
+};
+
+export const exportMasjidReport = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const report = await buildMasjidReport(req);
+
+    if (!report) {
+      res.status(403).json({
+        success: false,
+        message: "Akses ditolak atau masjid tidak ditemukan.",
+      });
+      return;
+    }
+
+    const format = String((req.query as ReportQuery).format ?? "PDF").toUpperCase() as ReportFormat;
+
+    if (format === "XLSX") {
+      await exportMasjidExcel(res, report);
+      return;
+    }
+
+    const filename = `laporan-masjid-${report.periode.tahun}${report.periode.bulan ? `-${String(report.periode.bulan).padStart(2, "0")}` : ""}.pdf`;
+    await sendPdf(res, filename, `Laporan Masjid - ${report.periode.label}`, [
+      `Masjid: ${report.masjid.nama_masjid}`,
+      `Alamat: ${report.masjid.alamat}`,
+      `RW: ${report.masjid.blok_wilayah.no_rw} - ${report.masjid.blok_wilayah.nama_kompleks}`,
+      `RT / Blok: ${report.masjid.blok_wilayah.no_rt ?? "-"} / ${report.masjid.blok_wilayah.nama_blok}`,
+      `Transaksi ZIS: ${report.summary.total_transaksi_zis}`,
+      `ZIS zakat: ${formatCurrency(report.summary.total_zis_uang_zakat)}`,
+      `ZIS infaq: ${formatCurrency(report.summary.total_zis_uang_infaq)}`,
+      `Beras (Kg): ${report.summary.total_zis_beras_kg.toFixed(2)}`,
+      `Kas masuk: ${formatCurrency(report.summary.total_kas_masuk)}`,
+      `Kas keluar: ${formatCurrency(report.summary.total_kas_keluar)}`,
+      `Saldo kas: ${formatCurrency(report.summary.saldo_kas)}`,
+      "",
+      "Series bulanan:",
+      ...report.series.map(
+        (item) =>
+          `${item.label}: kas masuk ${formatCurrency(item.kas_masuk)}, kas keluar ${formatCurrency(item.kas_keluar)}, saldo ${formatCurrency(item.kas_saldo)}, zakat ${formatCurrency(item.zis_uang_zakat)}, infaq ${formatCurrency(item.zis_uang_infaq)}, beras ${item.zis_beras_kg.toFixed(2)} Kg`
+      ),
+    ]);
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error instanceof Error ? error.message : "Terjadi kesalahan saat mengunduh laporan masjid.",
+    });
+  }
+};

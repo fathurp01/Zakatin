@@ -16,6 +16,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ZisCardsSkeleton } from "./ZisCardsSkeleton";
+import { MiniBarChart } from "@/components/dashboard/MiniBarChart";
 import { HandCoins, Search } from "lucide-react";
 
 const ZisCards = lazy(() => import("./ZisCards"));
@@ -52,6 +53,24 @@ interface DashboardZisPayload {
 
 interface DashboardResponse {
   data: DashboardZisPayload;
+}
+
+interface MasjidReportResponse {
+  data: {
+    summary: {
+      total_kas_masuk: number;
+      total_kas_keluar: number;
+      saldo_kas: number;
+      total_zis_uang_zakat: number;
+      total_zis_uang_infaq: number;
+    };
+    series: Array<{
+      label: string;
+      kas_saldo: number;
+      zis_uang_zakat: number;
+      zis_uang_infaq: number;
+    }>;
+  };
 }
 
 interface FilterFormState {
@@ -97,6 +116,7 @@ export default function MasjidDashboardPage() {
   const defaultMasjidId = useMemo(() => user?.masjid_ids?.[0] ?? "", [user]);
 
   const [dashboardData, setDashboardData] = useState<DashboardZisPayload | null>(null);
+  const [reportData, setReportData] = useState<MasjidReportResponse["data"] | null>(null);
   const [activeMasjidId, setActiveMasjidId] = useState<string>(defaultMasjidId);
   const [isLoadingData, setIsLoadingData] = useState(false);
 
@@ -112,19 +132,28 @@ export default function MasjidDashboardPage() {
     setIsLoadingData(true);
 
     try {
-      const response = await api.get<DashboardResponse>("/zis/dashboard", {
-        params: {
-          masjid_id: masjidId,
-        },
-      });
+      const [dashboardResponse, reportResponse] = await Promise.all([
+        api.get<DashboardResponse>("/zis/dashboard", {
+          params: {
+            masjid_id: masjidId,
+          },
+        }),
+        api.get<MasjidReportResponse>("/masjid/report", {
+          params: {
+            masjid_id: masjidId,
+          },
+        }),
+      ]);
 
-      setDashboardData(response.data.data);
-      setActiveMasjidId(response.data.data.masjid_id);
+      setDashboardData(dashboardResponse.data.data);
+      setReportData(reportResponse.data.data);
+      setActiveMasjidId(dashboardResponse.data.data.masjid_id);
       toast.success("Dashboard ZIS berhasil dimuat.");
     } catch (error) {
       const apiError = getApiError(error);
       toast.error(apiError.message);
       setDashboardData(null);
+      setReportData(null);
     } finally {
       setIsLoadingData(false);
     }
@@ -175,13 +204,27 @@ export default function MasjidDashboardPage() {
   const fixedBerasDistribution = dashboardData
     ? calculateFixedDistribution(Number(dashboardData.total_beras || 0))
     : null;
+  const kasChartItems = reportData
+    ? reportData.series.map((item) => ({
+        label: item.label,
+        value: item.kas_saldo,
+        hint: formatRupiah(item.kas_saldo),
+      }))
+    : [];
+  const zisChartItems = reportData
+    ? reportData.series.map((item) => ({
+        label: item.label,
+        value: item.zis_uang_zakat + item.zis_uang_infaq,
+        hint: formatRupiah(item.zis_uang_zakat + item.zis_uang_infaq),
+      }))
+    : [];
 
   return (
     <main className="flex flex-1 flex-col gap-6">
       {/* Page header */}
       <header className="flex flex-col gap-1">
         <div className="flex items-center gap-3">
-          <span className="inline-flex size-10 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-sm shadow-emerald-500/30">
+          <span className="inline-flex size-10 items-center justify-center rounded-2xl bg-linear-to-br from-emerald-500 to-teal-600 text-white shadow-sm shadow-emerald-500/30">
             <HandCoins className="size-5" />
           </span>
           <div>
@@ -251,14 +294,31 @@ export default function MasjidDashboardPage() {
           </CardHeader>
         </Card>
       ) : fixedUangDistribution && fixedBerasDistribution ? (
-        <Suspense fallback={<ZisCardsSkeleton />}>
-          <ZisCards
-            dashboardData={dashboardData}
-            fixedUangDistribution={fixedUangDistribution}
-            fixedBerasDistribution={fixedBerasDistribution}
-            formatRupiah={formatRupiah}
-          />
-        </Suspense>
+        <>
+          <Suspense fallback={<ZisCardsSkeleton />}>
+            <ZisCards
+              dashboardData={dashboardData}
+              fixedUangDistribution={fixedUangDistribution}
+              fixedBerasDistribution={fixedBerasDistribution}
+              formatRupiah={formatRupiah}
+            />
+          </Suspense>
+
+          {reportData ? (
+            <div className="grid gap-4 lg:grid-cols-2">
+              <MiniBarChart
+                title="Trend Saldo Kas Masjid"
+                description={`Saldo berjalan • Total masuk ${formatRupiah(reportData.summary.total_kas_masuk)} • Total keluar ${formatRupiah(reportData.summary.total_kas_keluar)}`}
+                items={kasChartItems}
+              />
+              <MiniBarChart
+                title="Trend Penerimaan ZIS"
+                description={`Akumulasi zakat + infaq • Total ${formatRupiah(reportData.summary.total_zis_uang_zakat + reportData.summary.total_zis_uang_infaq)}`}
+                items={zisChartItems}
+              />
+            </div>
+          ) : null}
+        </>
       ) : null}
     </main>
   );
