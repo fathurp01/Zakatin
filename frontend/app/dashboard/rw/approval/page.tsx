@@ -171,7 +171,7 @@ export default function ApprovalDashboardPage() {
       {/* Page header */}
       <header className="flex flex-col gap-1">
         <div className="flex items-center gap-3">
-          <span className="inline-flex size-10 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-sm shadow-indigo-500/30">
+          <span className="inline-flex size-10 items-center justify-center rounded-2xl bg-linear-to-br from-indigo-500 to-violet-600 text-white shadow-sm shadow-indigo-500/30">
             <ShieldCheck className="size-5" />
           </span>
           <div>
@@ -188,7 +188,7 @@ export default function ApprovalDashboardPage() {
       {/* Pending count badge */}
       {!isLoading && pendingItems.length > 0 && (
         <div className="flex items-center gap-3 rounded-2xl border border-amber-200/60 dark:border-amber-800/30 bg-amber-50/60 dark:bg-amber-950/20 px-4 py-3">
-          <Clock className="size-4 text-amber-500 flex-shrink-0" />
+          <Clock className="size-4 text-amber-500 shrink-0" />
           <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">
             {pendingItems.length} pengajuan menunggu persetujuan
           </p>
@@ -264,7 +264,7 @@ export default function ApprovalDashboardPage() {
                       <TableCell className="pl-5">
                         <div className="flex items-center gap-3">
                           {/* Avatar initials */}
-                          <span className="inline-flex size-9 flex-shrink-0 items-center justify-center rounded-2xl bg-indigo-100 dark:bg-indigo-950/40 text-xs font-extrabold text-indigo-600 dark:text-indigo-400">
+                          <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-2xl bg-indigo-100 dark:bg-indigo-950/40 text-xs font-extrabold text-indigo-600 dark:text-indigo-400">
                             {getInitials(item.nama)}
                           </span>
                           <div className="min-w-0">

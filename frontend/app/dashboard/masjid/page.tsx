@@ -546,7 +546,7 @@ export default function MasjidDashboardPage() {
                     type="date"
                     value={startDate}
                     onChange={(e) => setStartDate(e.target.value)}
-                    className="h-9 rounded-xl border border-input bg-white dark:bg-card px-3 text-sm min-w-[150px]"
+                    className="h-9 rounded-xl border border-input bg-white dark:bg-card px-3 text-sm min-w-37.5"
                   />
                 </div>
                 <div className="flex flex-col gap-1">
@@ -557,7 +557,7 @@ export default function MasjidDashboardPage() {
                     type="date"
                     value={endDate}
                     onChange={(e) => setEndDate(e.target.value)}
-                    className="h-9 rounded-xl border border-input bg-white dark:bg-card px-3 text-sm min-w-[150px]"
+                    className="h-9 rounded-xl border border-input bg-white dark:bg-card px-3 text-sm min-w-37.5"
                   />
                 </div>
                 <Button

@@ -111,11 +111,11 @@ export default function Home() {
   return (
     <div className="flex flex-col min-h-screen">
       {/* ─── NAVBAR ─── */}
-      <header className="sticky top-0 z-50 w-full border-b border-slate-200/60 dark:border-white/8 bg-white/80 dark:bg-card/80 backdrop-blur-xl supports-[backdrop-filter]:bg-white/70">
+      <header className="sticky top-0 z-50 w-full border-b border-slate-200/60 dark:border-white/8 bg-white/80 dark:bg-card/80 backdrop-blur-xl supports-backdrop-filter:bg-white/70">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2.5 group">
-            <span className="inline-flex size-8 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-sm group-hover:shadow-md group-hover:shadow-indigo-500/30 transition-all duration-200">
+            <span className="inline-flex size-8 items-center justify-center rounded-xl bg-linear-to-br from-indigo-500 to-violet-600 text-white shadow-sm group-hover:shadow-md group-hover:shadow-indigo-500/30 transition-all duration-200">
               <Building2 className="size-4" />
             </span>
             <span className="font-bold tracking-tight text-slate-900 dark:text-foreground">
@@ -158,8 +158,8 @@ export default function Home() {
         {/* ─── HERO ─── */}
         <section className="relative overflow-hidden hero-gradient">
           {/* Decorative blobs */}
-          <div aria-hidden className="pointer-events-none absolute -top-40 -left-40 size-[600px] rounded-full bg-indigo-400/10 blur-3xl dark:bg-indigo-600/10" />
-          <div aria-hidden className="pointer-events-none absolute -bottom-40 -right-40 size-[500px] rounded-full bg-emerald-400/10 blur-3xl dark:bg-emerald-600/10" />
+          <div aria-hidden className="pointer-events-none absolute -top-40 -left-40 size-150 rounded-full bg-indigo-400/10 blur-3xl dark:bg-indigo-600/10" />
+          <div aria-hidden className="pointer-events-none absolute -bottom-40 -right-40 size-125 rounded-full bg-emerald-400/10 blur-3xl dark:bg-emerald-600/10" />
 
           <div className="relative mx-auto max-w-6xl px-4 py-20 sm:px-6 sm:py-28 lg:px-8 lg:py-32">
             <div className="flex flex-col items-center text-center gap-6 max-w-3xl mx-auto">
@@ -408,11 +408,11 @@ export default function Home() {
               {/* RW Card */}
               <div className="group relative overflow-hidden rounded-3xl border border-indigo-200/60 dark:border-indigo-800/30 bg-white dark:bg-card shadow-sm hover:shadow-xl hover:shadow-indigo-500/10 hover:-translate-y-1 transition-all duration-300 p-7 flex flex-col gap-5">
                 {/* Top accent bg */}
-                <div aria-hidden className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-indigo-500 to-violet-600 rounded-t-3xl" />
+                <div aria-hidden className="absolute top-0 left-0 right-0 h-1 bg-linear-to-r from-indigo-500 to-violet-600 rounded-t-3xl" />
                 <div aria-hidden className="pointer-events-none absolute -top-12 -right-12 size-40 rounded-full bg-indigo-50 dark:bg-indigo-950/30 blur-2xl opacity-60 group-hover:opacity-100 transition-opacity" />
 
                 <div className="flex items-start gap-4 relative">
-                  <span className="inline-flex size-13 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-sm shadow-indigo-500/30 flex-shrink-0">
+                  <span className="inline-flex size-13 items-center justify-center rounded-2xl bg-linear-to-br from-indigo-500 to-violet-600 text-white shadow-sm shadow-indigo-500/30 shrink-0">
                     <Users className="size-6" />
                   </span>
                   <div>
@@ -432,7 +432,7 @@ export default function Home() {
                     "Aksi bayar yang cepat & aman",
                   ].map((item) => (
                     <li key={item} className="flex items-center gap-2 text-sm text-slate-600 dark:text-muted-foreground">
-                      <CheckCircle2 className="size-4 text-indigo-500 flex-shrink-0" />
+                      <CheckCircle2 className="size-4 text-indigo-500 shrink-0" />
                       {item}
                     </li>
                   ))}
@@ -449,11 +449,11 @@ export default function Home() {
               {/* Masjid Card */}
               <div className="group relative overflow-hidden rounded-3xl border border-emerald-200/60 dark:border-emerald-800/30 bg-white dark:bg-card shadow-sm hover:shadow-xl hover:shadow-emerald-500/10 hover:-translate-y-1 transition-all duration-300 p-7 flex flex-col gap-5">
                 {/* Top accent bg */}
-                <div aria-hidden className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-emerald-500 to-teal-600 rounded-t-3xl" />
+                <div aria-hidden className="absolute top-0 left-0 right-0 h-1 bg-linear-to-r from-emerald-500 to-teal-600 rounded-t-3xl" />
                 <div aria-hidden className="pointer-events-none absolute -top-12 -right-12 size-40 rounded-full bg-emerald-50 dark:bg-emerald-950/30 blur-2xl opacity-60 group-hover:opacity-100 transition-opacity" />
 
                 <div className="flex items-start gap-4 relative">
-                  <span className="inline-flex size-13 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-sm shadow-emerald-500/30 flex-shrink-0">
+                  <span className="inline-flex size-13 items-center justify-center rounded-2xl bg-linear-to-br from-emerald-500 to-teal-600 text-white shadow-sm shadow-emerald-500/30 shrink-0">
                     <HandCoins className="size-6" />
                   </span>
                   <div>
@@ -473,7 +473,7 @@ export default function Home() {
                     "Mudah dibaca, siap laporan",
                   ].map((item) => (
                     <li key={item} className="flex items-center gap-2 text-sm text-slate-600 dark:text-muted-foreground">
-                      <CheckCircle2 className="size-4 text-emerald-500 flex-shrink-0" />
+                      <CheckCircle2 className="size-4 text-emerald-500 shrink-0" />
                       {item}
                     </li>
                   ))}
@@ -513,7 +513,7 @@ export default function Home() {
         <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-2">
-              <span className="inline-flex size-7 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white">
+              <span className="inline-flex size-7 items-center justify-center rounded-xl bg-linear-to-br from-indigo-500 to-violet-600 text-white">
                 <Building2 className="size-3.5" />
               </span>
               <span className="font-bold tracking-tight text-slate-900 dark:text-foreground text-sm">

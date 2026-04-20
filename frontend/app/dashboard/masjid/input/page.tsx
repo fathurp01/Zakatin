@@ -170,7 +170,7 @@ export default function ZisInputPage() {
       {/* Header */}
       <header>
         <div className="flex items-center gap-3">
-          <span className="inline-flex size-12 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-md shadow-emerald-500/30">
+          <span className="inline-flex size-12 items-center justify-center rounded-2xl bg-linear-to-br from-emerald-500 to-teal-600 text-white shadow-md shadow-emerald-500/30">
             <Wheat className="size-6" />
           </span>
           <div>
@@ -504,7 +504,7 @@ export default function ZisInputPage() {
                 type="submit"
                 variant="masjid"
                 size="xl"
-                className="flex-[2] gap-3 shadow-lg shadow-emerald-500/20 text-lg"
+                className="flex-2 gap-3 shadow-lg shadow-emerald-500/20 text-lg"
                 disabled={isSubmitting}
               >
                 {isSubmitting ? (
