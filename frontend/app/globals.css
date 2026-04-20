@@ -1,0 +1,288 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-inter);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/* ============================================================
+   LIGHT MODE — Premium "Mira" palette
+   ============================================================ */
+:root {
+  /* Base surfaces */
+  --background: oklch(0.98 0.004 247);      /* slate-50-ish, slightly blue tinted */
+  --foreground: oklch(0.15 0.014 262);       /* slate-900 */
+  --card: oklch(1 0 0);                       /* pure white */
+  --card-foreground: oklch(0.15 0.014 262);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.15 0.014 262);
+
+  /* Primary — indigo 600 */
+  --primary: oklch(0.491 0.221 264);
+  --primary-foreground: oklch(0.985 0 0);
+
+  /* Secondary */
+  --secondary: oklch(0.961 0.008 247);
+  --secondary-foreground: oklch(0.25 0.014 262);
+
+  /* Muted */
+  --muted: oklch(0.961 0.008 247);
+  --muted-foreground: oklch(0.52 0.02 262);
+
+  /* Accent */
+  --accent: oklch(0.96 0.012 264);
+  --accent-foreground: oklch(0.4 0.18 264);
+
+  /* Status */
+  --destructive: oklch(0.577 0.245 27.325);
+
+  /* Borders */
+  --border: oklch(0.906 0.013 250);
+  --input: oklch(0.906 0.013 250);
+  --ring: oklch(0.491 0.221 264);
+
+  /* Charts */
+  --chart-1: oklch(0.491 0.221 264);
+  --chart-2: oklch(0.519 0.178 157);
+  --chart-3: oklch(0.729 0.167 60);
+  --chart-4: oklch(0.65 0.19 27);
+  --chart-5: oklch(0.6 0.15 200);
+
+  /* Radius */
+  --radius: 0.75rem;
+
+  /* Sidebar */
+  --sidebar: oklch(0.992 0.002 247);
+  --sidebar-foreground: oklch(0.15 0.014 262);
+  --sidebar-primary: oklch(0.491 0.221 264);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.955 0.012 264);
+  --sidebar-accent-foreground: oklch(0.4 0.18 264);
+  --sidebar-border: oklch(0.906 0.013 250);
+  --sidebar-ring: oklch(0.491 0.221 264);
+}
+
+/* ============================================================
+   DARK MODE — Deep slate with colored accents
+   ============================================================ */
+.dark {
+  --background: oklch(0.126 0.016 262);      /* near-black with blue tint */
+  --foreground: oklch(0.94 0.006 247);        /* off-white */
+  --card: oklch(0.175 0.016 264);             /* elevated surface */
+  --card-foreground: oklch(0.94 0.006 247);
+  --popover: oklch(0.19 0.016 264);
+  --popover-foreground: oklch(0.94 0.006 247);
+
+  /* Primary — indigo brighter for dark */
+  --primary: oklch(0.62 0.21 264);
+  --primary-foreground: oklch(0.985 0 0);
+
+  /* Secondary */
+  --secondary: oklch(0.22 0.018 264);
+  --secondary-foreground: oklch(0.94 0.006 247);
+
+  /* Muted */
+  --muted: oklch(0.22 0.018 264);
+  --muted-foreground: oklch(0.58 0.02 262);
+
+  /* Accent */
+  --accent: oklch(0.24 0.024 264);
+  --accent-foreground: oklch(0.72 0.17 264);
+
+  /* Status */
+  --destructive: oklch(0.704 0.191 22.216);
+
+  /* Borders */
+  --border: oklch(1 0 0 / 9%);
+  --input: oklch(1 0 0 / 12%);
+  --ring: oklch(0.62 0.21 264);
+
+  /* Charts */
+  --chart-1: oklch(0.62 0.21 264);
+  --chart-2: oklch(0.599 0.178 157);
+  --chart-3: oklch(0.769 0.147 60);
+  --chart-4: oklch(0.7 0.18 27);
+  --chart-5: oklch(0.66 0.13 200);
+
+  /* Sidebar */
+  --sidebar: oklch(0.155 0.016 264);
+  --sidebar-foreground: oklch(0.94 0.006 247);
+  --sidebar-primary: oklch(0.62 0.21 264);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.24 0.024 264);
+  --sidebar-accent-foreground: oklch(0.72 0.17 264);
+  --sidebar-border: oklch(1 0 0 / 9%);
+  --sidebar-ring: oklch(0.62 0.21 264);
+}
+
+/* ============================================================
+   BASE LAYER
+   ============================================================ */
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+  html {
+    @apply scroll-smooth;
+  }
+}
+
+/* ============================================================
+   CUSTOM UTILITIES — Mira Design System
+   ============================================================ */
+@layer utilities {
+  /* Glass surface */
+  .glass {
+    background: oklch(1 0 0 / 70%);
+    backdrop-filter: blur(16px) saturate(180%);
+    -webkit-backdrop-filter: blur(16px) saturate(180%);
+    border: 1px solid oklch(0.9 0.01 250 / 50%);
+  }
+  .dark .glass {
+    background: oklch(0.175 0.016 264 / 75%);
+    border: 1px solid oklch(1 0 0 / 8%);
+  }
+
+  /* Elevated card */
+  .card-elevated {
+    @apply rounded-3xl shadow-sm transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5;
+  }
+
+  /* Glow effects */
+  .glow-success {
+    box-shadow: 0 0 0 1px oklch(0.519 0.178 157 / 30%), 0 0 8px oklch(0.519 0.178 157 / 25%);
+  }
+  .glow-pending {
+    box-shadow: 0 0 0 1px oklch(0.65 0.14 80 / 30%), 0 0 8px oklch(0.65 0.14 80 / 20%);
+  }
+  .glow-rw {
+    box-shadow: 0 0 0 1px oklch(0.491 0.221 264 / 30%), 0 0 8px oklch(0.491 0.221 264 / 25%);
+  }
+  .glow-masjid {
+    box-shadow: 0 0 0 1px oklch(0.519 0.178 157 / 30%), 0 0 8px oklch(0.519 0.178 157 / 25%);
+  }
+  .glow-error {
+    box-shadow: 0 0 0 1px oklch(0.577 0.245 27 / 30%), 0 0 8px oklch(0.577 0.245 27 / 20%);
+  }
+
+  /* Text gradient */
+  .text-gradient-rw {
+    background: linear-gradient(135deg, oklch(0.491 0.221 264), oklch(0.58 0.19 280));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .text-gradient-masjid {
+    background: linear-gradient(135deg, oklch(0.519 0.178 157), oklch(0.55 0.16 170));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .text-gradient-hero {
+    background: linear-gradient(135deg, oklch(0.491 0.221 264) 0%, oklch(0.519 0.178 157) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Dot grid background */
+  .bg-dot-grid {
+    background-image: radial-gradient(circle, oklch(0.65 0.01 250 / 60%) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+  .dark .bg-dot-grid {
+    background-image: radial-gradient(circle, oklch(1 0 0 / 5%) 1px, transparent 1px);
+  }
+
+  /* Animated dot */
+  .dot-pulse {
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.6; transform: scale(0.85); }
+  }
+
+  /* Shimmer from tw-animate */
+  .animate-fade-in {
+    animation: fadeIn 0.4s ease-out both;
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Subtle page gradient */
+  .page-gradient {
+    background:
+      radial-gradient(ellipse 70% 40% at 0% 0%, oklch(0.491 0.221 264 / 6%) 0%, transparent 60%),
+      radial-gradient(ellipse 70% 40% at 100% 100%, oklch(0.519 0.178 157 / 6%) 0%, transparent 60%),
+      var(--background);
+  }
+  .dark .page-gradient {
+    background:
+      radial-gradient(ellipse 70% 40% at 0% 0%, oklch(0.491 0.221 264 / 10%) 0%, transparent 60%),
+      radial-gradient(ellipse 70% 40% at 100% 100%, oklch(0.519 0.178 157 / 10%) 0%, transparent 60%),
+      var(--background);
+  }
+
+  /* Landing hero gradient */
+  .hero-gradient {
+    background:
+      radial-gradient(ellipse 80% 60% at 20% -10%, oklch(0.491 0.221 264 / 12%) 0%, transparent 60%),
+      radial-gradient(ellipse 60% 50% at 80% 110%, oklch(0.519 0.178 157 / 10%) 0%, transparent 60%),
+      var(--background);
+  }
+  .dark .hero-gradient {
+    background:
+      radial-gradient(ellipse 80% 60% at 20% -10%, oklch(0.491 0.221 264 / 18%) 0%, transparent 60%),
+      radial-gradient(ellipse 60% 50% at 80% 110%, oklch(0.519 0.178 157 / 15%) 0%, transparent 60%),
+      var(--background);
+  }
+}
